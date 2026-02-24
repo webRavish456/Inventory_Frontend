@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import {
   Box,
   Typography,
@@ -10,56 +10,45 @@ import {
   CardContent,
   Button,
   Chip,
+  CircularProgress,
+  Alert,
 } from "@mui/material";
 import { Edit, ArrowBack } from "@mui/icons-material";
+import { fetchStaffById } from "@/lib/staffApi";
 
 const ViewStaff = () => {
   const params = useParams();
+  const router = useRouter();
   const [staffData, setStaffData] = useState(null);
-
-  // Sample staff data (in real app, this would come from API)
-  const sampleStaffData = {
-    id: "STAFF001",
-    staffName: "Priya Singh",
-    gender: "Female",
-    dob: "1990-05-15",
-    mobileNo: "9876543210",
-    emailId: "priya.singh@company.com",
-    qualification: "MBA",
-    experience: "5 years",
-    address: "123 Business Park, Mumbai, Maharashtra",
-    branchName: "Head Office",
-    designation: "Office Administrator",
-    department: "Administration",
-    salary: 55000,
-    joiningDate: "2020-01-15",
-    resumeCertificate: "resume_priya.pdf",
-    highestQualificationCertificate: "mba_cert.pdf",
-    panCard: "ABCDE1234F",
-    aadharCard: "123456789012",
-    accountHolderName: "Priya Singh",
-    accountNumber: "1234567890",
-    bankName: "HDFC Bank",
-    ifscCode: "HDFC0001234",
-    bankBranch: "Mumbai Branch",
-    branchLocation: "Mumbai"
-  };
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    // In real app, fetch staff data by ID from API
-    setStaffData(sampleStaffData);
+    if (!params?.id) return;
+    fetchStaffById(params.id)
+      .then(setStaffData)
+      .catch((err) => setError(err.message || 'Failed to load staff'))
+      .finally(() => setLoading(false));
   }, [params.id]);
 
-  const handleEdit = () => {
-    window.location.href = `/staff/edit/${params.id}`;
-  };
+  const handleEdit = () => router.push(`/staff/edit/${params.id}`);
+  const handleBack = () => router.back();
 
-  const handleBack = () => {
-    window.history.back();
-  };
+  if (loading) {
+    return (
+      <div className="content-area" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
+        <CircularProgress />
+      </div>
+    );
+  }
 
-  if (!staffData) {
-    return <div>Loading...</div>;
+  if (error || !staffData) {
+    return (
+      <div className="content-area">
+        <Alert severity="error">{error || 'Staff not found'}</Alert>
+        <Button onClick={handleBack} sx={{ mt: 2 }}>Back</Button>
+      </div>
+    );
   }
 
   return (
@@ -109,7 +98,7 @@ const ViewStaff = () => {
                       Address
                     </Typography>
                     <Typography variant="body1" sx={{ fontWeight: 500, fontSize: '1rem' }}>
-                      {staffData.address}
+                      {staffData.address || [staffData.addressLine1, staffData.addressLine2, staffData.city, staffData.state].filter(Boolean).join(', ')}
                     </Typography>
                   </Box>
                 </Grid>
@@ -202,7 +191,7 @@ const ViewStaff = () => {
                       Salary
                     </Typography>
                     <Typography variant="body1" sx={{ fontWeight: 500, fontSize: '1rem' }}>
-                      ₹{staffData.salary.toLocaleString()}
+                      ₹{(staffData.salary || 0).toLocaleString()}
                     </Typography>
                   </Box>
                 </Grid>
@@ -222,8 +211,8 @@ const ViewStaff = () => {
                       Status
                     </Typography>
                     <Chip 
-                      label="Active" 
-                      color="success" 
+                      label={staffData.availabilityStatus || staffData.status || 'Active'} 
+                      color={staffData.status === 'Inactive' ? 'default' : 'success'} 
                       size="small"
                       sx={{ fontWeight: 500 }}
                     />
@@ -278,7 +267,7 @@ const ViewStaff = () => {
                       IFSC Code
                     </Typography>
                     <Typography variant="body1" sx={{ fontWeight: 500, fontSize: '1rem' }}>
-                      {staffData.ifscCode}
+                      {staffData.ifscCode || staffData.IFSC}
                     </Typography>
                   </Box>
                 </Grid>

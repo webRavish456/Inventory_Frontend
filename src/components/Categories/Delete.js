@@ -7,10 +7,10 @@ import {
   Typography,
 } from "@mui/material";
 
-const DeleteCategory = ({ categoryData, onClose, onDelete }) => {
-  const handleDelete = () => {
-    onDelete(categoryData?.id);
-    onClose();
+const DeleteCategory = ({ categoryData, onClose, onDelete, saving }) => {
+  const handleDelete = async () => {
+    if (!categoryData?.id) return;
+    await onDelete(categoryData.id);
   };
 
   return (
@@ -32,9 +32,10 @@ const DeleteCategory = ({ categoryData, onClose, onDelete }) => {
           variant="contained"
           color="error"
           onClick={handleDelete}
+          disabled={saving}
           sx={{ transform: 'none', textTransform: 'none' }}
         >
-          Delete
+          {saving ? "Deleting..." : "Delete"}
         </Button>
       </Box>
     </Box>

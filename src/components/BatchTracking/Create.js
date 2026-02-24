@@ -10,9 +10,10 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Typography,
 } from "@mui/material";
 
-const CreateBatch = ({ onClose, onSave }) => {
+const CreateBatch = ({ onClose, onSave, products = [], suppliers = [] }) => {
   const [formData, setFormData] = useState({
     productId: '',
     batchNumber: '',
@@ -24,22 +25,6 @@ const CreateBatch = ({ onClose, onSave }) => {
   });
 
   const [errors, setErrors] = useState({});
-
-  // Sample products for dropdown
-  const products = [
-    { id: 'PROD001', name: 'Samsung Galaxy S24' },
-    { id: 'PROD002', name: 'Dell Inspiron 15' },
-    { id: 'PROD003', name: 'Office Chair' },
-    { id: 'PROD004', name: 'Coffee Mug' }
-  ];
-
-  // Sample suppliers for dropdown
-  const suppliers = [
-    { id: 'SUP001', name: 'Samsung India' },
-    { id: 'SUP002', name: 'Dell Technologies' },
-    { id: 'SUP003', name: 'Office Furniture Co.' },
-    { id: 'SUP004', name: 'Kitchen Essentials' }
-  ];
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
@@ -69,14 +54,13 @@ const CreateBatch = ({ onClose, onSave }) => {
 
   const handleSave = () => {
     if (validateForm()) {
-      const newBatch = {
+      const payload = {
         ...formData,
         status: 'Active',
-        id: `BATCH${String(Date.now()).slice(-3)}`,
-        createdDate: new Date().toISOString().split('T')[0],
-        lastUpdated: new Date().toISOString().split('T')[0]
+        productId: formData.productId,
+        supplierId: formData.supplier || undefined,
       };
-      onSave(newBatch);
+      onSave(payload);
       onClose();
     }
   };

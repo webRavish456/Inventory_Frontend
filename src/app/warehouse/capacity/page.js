@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Table,
@@ -14,92 +14,56 @@ import {
   InputAdornment,
   Pagination,
   Stack,
-  Button,
+  CircularProgress,
+  Alert,
+  Snackbar,
 } from "@mui/material";
-import { Search, Add, VisibilityOutlined, EditOutlined, DeleteOutlined, ArrowBack } from "@mui/icons-material";
+import { Search, Add, VisibilityOutlined, EditOutlined, DeleteOutlined } from "@mui/icons-material";
 import CommonDialog from '../../../components/CommonDialog';
 import CreateCapacity from '../../../components/Warehouse/Capacity/Create';
 import EditCapacity from '../../../components/Warehouse/Capacity/Edit';
 import ViewCapacity from '../../../components/Warehouse/Capacity/View';
 import DeleteCapacity from '../../../components/Warehouse/Capacity/Delete';
+import { fetchWarehouses, fetchWarehouseCapacities, createWarehouseCapacity, updateWarehouseCapacity, deleteWarehouseCapacity } from '../../../lib/warehouseApi';
 
 const CapacityPlanning = () => {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage] = useState(10);
+  const [capacityData, setCapacityData] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   
-  // CRUD operations state
   const [openData, setOpenData] = useState(false);
   const [viewShow, setViewShow] = useState(false);
   const [editShow, setEditShow] = useState(false);
   const [deleteShow, setDeleteShow] = useState(false);
   const [selectedCapacity, setSelectedCapacity] = useState(null);
 
-  // Capacity Planning data with professional fields
-  const [capacityData, setCapacityData] = useState([
-    {
-      id: "CAP001",
-      capacityId: "CAP001",
-      warehouseId: "WH001",
-      warehouseName: "Mumbai Central Distribution Center",
-      totalCapacityVolume: 50000, // m³ or cubic ft
-      totalCapacityWeight: 1000, // kg / tons
-      totalCapacityUnits: 10000, // pallets / bins
-      availableCapacityVolume: 12500, // m³
-      availableCapacityWeight: 250, // kg / tons
-      reservedCapacity: 5000, // incoming stock reserved space
-      utilizationPercent: 75, // auto-calculated
-      throughputCapacity: 1500, // orders handled per day/hour
-      forecastedDemand: 30, // next X days
-      capacityAlertThreshold: 90, // alert at 90% full
-      storageTypeBreakdown: "Dry: 70%, Cold: 20%, Hazardous: 10%",
-      status: "Optimal",
-      lastUpdated: "2024-09-20"
-    },
-    {
-      id: "CAP002",
-      capacityId: "CAP002",
-      warehouseId: "WH002",
-      warehouseName: "Delhi Electronics Hub",
-      totalCapacityVolume: 25000, // m³ or cubic ft
-      totalCapacityWeight: 500, // kg / tons
-      totalCapacityUnits: 5000, // pallets / bins
-      availableCapacityVolume: 9000, // m³
-      availableCapacityWeight: 180, // kg / tons
-      reservedCapacity: 2000, // incoming stock reserved space
-      utilizationPercent: 64, // auto-calculated
-      throughputCapacity: 800, // orders handled per day/hour
-      forecastedDemand: 25, // next X days
-      capacityAlertThreshold: 85, // alert at 90% full
-      storageTypeBreakdown: "Electronics: 100%",
-      status: "Good",
-      lastUpdated: "2024-09-18"
-    },
-    {
-      id: "CAP003",
-      capacityId: "CAP003",
-      warehouseId: "WH003",
-      warehouseName: "Bangalore Cold Storage",
-      totalCapacityVolume: 40000, // m³ or cubic ft
-      totalCapacityWeight: 800, // kg / tons
-      totalCapacityUnits: 8000, // pallets / bins
-      availableCapacityVolume: 16000, // m³
-      availableCapacityWeight: 320, // kg / tons
-      reservedCapacity: 3000, // incoming stock reserved space
-      utilizationPercent: 60, // auto-calculated
-      throughputCapacity: 1200, // orders handled per day/hour
-      forecastedDemand: 20, // next X days
-      capacityAlertThreshold: 80, // alert at 90% full
-      storageTypeBreakdown: "Cold Storage: 100%",
-      status: "Good",
-      lastUpdated: "2024-09-15"
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [caps, whs] = await Promise.all([fetchWarehouseCapacities(), fetchWarehouses()]);
+      setCapacityData(caps || []);
+      setWarehouses(whs || []);
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || 'Failed to load data', severity: 'error' });
+      setCapacityData([]);
+      setWarehouses([]);
+    } finally {
+      setLoading(false);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const filteredCapacity = capacityData.filter(capacity =>
-    capacity.warehouseName.toLowerCase().includes(search.toLowerCase()) ||
-    capacity.storageTypeBreakdown.toLowerCase().includes(search.toLowerCase()) ||
-    capacity.status.toLowerCase().includes(search.toLowerCase())
+    (capacity.warehouseName || '').toLowerCase().includes(search.toLowerCase()) ||
+    ((capacity.storageTypeBreakdown || '').toLowerCase().includes(search.toLowerCase())) ||
+    (capacity.status || '').toLowerCase().includes(search.toLowerCase())
   );
 
   const getStatusColor = (status) => {
@@ -155,33 +119,59 @@ const CapacityPlanning = () => {
     setSelectedCapacity(null);
   };
 
-  const handleCreate = (newCapacity) => {
-    const capacity = {
-      ...newCapacity,
-      id: `CAP${String(capacityData.length + 1).padStart(3, '0')}`,
-      capacityId: `CAP${String(capacityData.length + 1).padStart(3, '0')}`,
-      lastUpdated: new Date().toISOString().split('T')[0]
-    };
-    setCapacityData(prev => [...prev, capacity]);
-    handleClose();
+  const getWarehouseIdFromName = (name) => {
+    const w = warehouses.find(x => (x.warehouseName || x.name) === name);
+    return w?.id || w?.warehouseId;
   };
 
-  const handleUpdate = (updatedCapacity) => {
-    setCapacityData(prev => prev.map(capacity => 
-      capacity.id === selectedCapacity.id 
-        ? { ...updatedCapacity, lastUpdated: new Date().toISOString().split('T')[0] }
-        : capacity
-    ));
-    handleClose();
+  const handleCreate = async (formData) => {
+    try {
+      const warehouseId = formData.warehouseId || getWarehouseIdFromName(formData.warehouseName);
+      if (!warehouseId) {
+        setSnackbar({ open: true, message: 'Please select a warehouse', severity: 'error' });
+        return;
+      }
+      await createWarehouseCapacity(formData, warehouseId);
+      await loadData();
+      handleClose();
+      setSnackbar({ open: true, message: 'Capacity plan created successfully', severity: 'success' });
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || 'Failed to create capacity plan', severity: 'error' });
+    }
   };
 
-  const handleDelete = () => {
-    setCapacityData(prev => prev.filter(capacity => capacity.id !== selectedCapacity.id));
-    handleClose();
+  const handleUpdate = async (formData) => {
+    try {
+      const warehouseId = formData.warehouseId || selectedCapacity?.warehouseId || getWarehouseIdFromName(formData.warehouseName);
+      if (!warehouseId) {
+        setSnackbar({ open: true, message: 'Warehouse not found', severity: 'error' });
+        return;
+      }
+      await updateWarehouseCapacity(selectedCapacity.id, formData, warehouseId);
+      await loadData();
+      handleClose();
+      setSnackbar({ open: true, message: 'Capacity plan updated successfully', severity: 'success' });
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || 'Failed to update capacity plan', severity: 'error' });
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await deleteWarehouseCapacity(selectedCapacity.id);
+      await loadData();
+      handleClose();
+      setSnackbar({ open: true, message: 'Capacity plan deleted successfully', severity: 'success' });
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || 'Failed to delete capacity plan', severity: 'error' });
+    }
   };
 
   return (
     <div className="content-area">
+      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'top', horizontal: 'right' }}>
+        <Alert severity={snackbar.severity} onClose={() => setSnackbar(s => ({ ...s, open: false }))}>{snackbar.message}</Alert>
+      </Snackbar>
       
       {/* Search and Create Button */}
       <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "1rem", marginBottom: "1rem" }}>
@@ -225,7 +215,19 @@ const CapacityPlanning = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredCapacity
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                    <CircularProgress />
+                  </TableCell>
+                </TableRow>
+              ) : filteredCapacity.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                    <Typography color="text.secondary">No capacity plans found</Typography>
+                  </TableCell>
+                </TableRow>
+              ) : filteredCapacity
                 .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                 .map((capacity, index) => (
                   <TableRow key={capacity.id}>
@@ -235,8 +237,8 @@ const CapacityPlanning = () => {
                         {capacity.warehouseName}
                       </Typography>
                     </TableCell>
-                    <TableCell>{capacity.totalCapacityUnits.toLocaleString()}</TableCell>
-                    <TableCell>{capacity.availableCapacityVolume.toLocaleString()}</TableCell>
+                    <TableCell>{(capacity.totalCapacityUnits ?? capacity.totalCapacity ?? 0).toLocaleString()}</TableCell>
+                    <TableCell>{(capacity.availableCapacityVolume ?? 0).toLocaleString()}</TableCell>
                     <TableCell>
                       <Box className={`hrms-badge ${getUtilizationColor(capacity.utilizationPercent)}`}>
                         {capacity.utilizationPercent}%
@@ -318,6 +320,7 @@ const CapacityPlanning = () => {
         dialogContent={
           openData ? (
             <CreateCapacity 
+              warehouses={warehouses}
               handleCreate={handleCreate} 
               handleClose={handleClose} 
             />
@@ -326,8 +329,9 @@ const CapacityPlanning = () => {
               capacity={selectedCapacity} 
               handleClose={handleClose} 
             />
-          ) : editShow ? (
+          ) :           editShow ? (
             <EditCapacity 
+              warehouses={warehouses}
               handleUpdate={handleUpdate} 
               handleClose={handleClose} 
               capacity={selectedCapacity}

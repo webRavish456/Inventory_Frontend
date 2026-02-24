@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import {
   Box,
   TextField,
@@ -18,13 +18,375 @@ import {
   FormLabel,
   Card,
   CardContent,
+  Alert,
+  CircularProgress,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
-import { Save, Cancel, ArrowBack } from "@mui/icons-material";
+import DeleteIcon from '@mui/icons-material/Delete';
+import CloseIcon from '@mui/icons-material/Close';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import DownloadIcon from '@mui/icons-material/Download';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
+import { fetchStaffById, updateStaff, fetchWarehouses } from "@/lib/staffApi";
+import { fetchRoles } from "@/lib/rolesApi";
+import { getApiUrl } from "@/lib/api";
+
+const DEPARTMENTS = ['Warehouse', 'Sales', 'Purchase', 'Finance', 'IT', 'HR', 'Administration', 'Support', 'Maintenance', 'Security', 'Housekeeping'];
+
+const DocumentUpload = ({ label, value, onChange, fieldName }) => {
+  const [preview, setPreview] = useState(null);
+  const [fileName, setFileName] = useState('');
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [modalContentUrl, setModalContentUrl] = useState(null);
+
+  useEffect(() => {
+    if (value && typeof value === 'string') {
+      const name = value.split('/').pop() || value;
+      setFileName(name);
+      const isImage = name.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+      const isUrlOrPath = value.startsWith('http') || value.startsWith('/') || value.startsWith('data:');
+      if (isImage && isUrlOrPath) {
+        setPreview(value);
+      } else {
+        setPreview(null);
+      }
+    } else if (value === null || value === '') {
+      setPreview(null);
+      setFileName('');
+    }
+  }, [value]);
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFileName(file.name);
+      onChange(file);
+
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPreview(reader.result);
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setPreview(null);
+      }
+    }
+  };
+
+  const handleClear = () => {
+    setPreview(null);
+    setFileName('');
+    onChange(null);
+  };
+
+  const handleView = () => {
+    if (preview) {
+      setModalContentUrl({ type: 'image', url: preview });
+      setViewModalOpen(true);
+    } else if (value && typeof value === 'string') {
+      const isUrlOrPath = value.startsWith('http') || value.startsWith('/') || value.startsWith('data:');
+      const name = (value.split('/').pop() || value).toLowerCase();
+      const isPdf = name.endsWith('.pdf');
+      const isImage = name.match(/\.(jpg|jpeg|png|gif|webp)$/);
+      if (isUrlOrPath && (isPdf || isImage)) {
+        setModalContentUrl({ type: isPdf ? 'pdf' : 'image', url: value });
+        setViewModalOpen(true);
+      } else {
+        setModalContentUrl({ type: 'filename', url: null, name: value.split('/').pop() || value });
+        setViewModalOpen(true);
+      }
+    } else if (value && typeof value === 'object' && value instanceof File) {
+      if (value.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setModalContentUrl({ type: 'image', url: reader.result });
+          setViewModalOpen(true);
+        };
+        reader.readAsDataURL(value);
+      } else if (value.type === 'application/pdf') {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setModalContentUrl({ type: 'pdf', url: reader.result });
+          setViewModalOpen(true);
+        };
+        reader.readAsDataURL(value);
+      } else {
+        setModalContentUrl({ type: 'filename', url: null, name: value.name });
+        setViewModalOpen(true);
+      }
+    }
+  };
+
+  const handleCloseModal = () => {
+    setViewModalOpen(false);
+    setModalContentUrl(null);
+  };
+
+  const isPdf = () => {
+    if (value instanceof File) return value.type === 'application/pdf';
+    const name = (fileName || (typeof value === 'string' && value) || '').toLowerCase();
+    return name.endsWith('.pdf');
+  };
+
+  const getDownloadFilename = () => {
+    const name = fileName || (typeof value === 'string' && value?.split?.('/').pop()) || 'document.pdf';
+    return name.endsWith('.pdf') ? name : `${name}.pdf`;
+  };
+
+  const handleDownload = async () => {
+    const downloadName = getDownloadFilename();
+    if (value instanceof File) {
+      const url = URL.createObjectURL(value);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = value.name || downloadName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return;
+    }
+    if (value && typeof value === 'string') {
+      if (value.startsWith('http') && value.includes('cloudinary.com')) {
+        const token = typeof window !== 'undefined' && localStorage.getItem('inventory_admin_token');
+        const proxyUrl = `${getApiUrl('/staff/download-document')}?url=${encodeURIComponent(value)}&filename=${encodeURIComponent(downloadName)}`;
+        try {
+          const res = await fetch(proxyUrl, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          if (!res.ok) throw new Error('Download failed');
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = downloadName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch {
+          window.open(value, '_blank');
+        }
+        return;
+      }
+      if (value.startsWith('http')) {
+        window.open(value, '_blank');
+        return;
+      }
+      if (value.startsWith('data:')) {
+        const a = document.createElement('a');
+        a.href = value;
+        a.download = downloadName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    }
+  };
+
+  return (
+    <Box sx={{ marginBottom: 2 }}>
+      <Typography variant="body2" sx={{ marginBottom: 1, fontWeight: 'bold' }}>
+        {label}
+      </Typography>
+      
+      {/* File Input */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, marginBottom: 1 }}>
+        <input
+          type="file"
+          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+          onChange={handleFileChange}
+          style={{ 
+            width: '100%',
+            padding: '8px',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            backgroundColor: '#fff'
+          }}
+          id={`file-${fieldName}`}
+        />
+      </Box>
+
+      {/* File Info and Actions */}
+      {(fileName || value) && (
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1, 
+          padding: 1,
+          backgroundColor: '#f5f5f5',
+          borderRadius: 1,
+          marginTop: 1
+        }}>
+          {preview ? (
+            <Box
+              component="img"
+              src={preview}
+              alt="Preview"
+              sx={{
+                width: 60,
+                height: 60,
+                objectFit: 'cover',
+                borderRadius: 1,
+                border: '1px solid #ddd'
+              }}
+            />
+          ) : (
+            <Box
+              sx={{
+                width: 60,
+                height: 60,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 1,
+                border: '1px solid #ddd',
+                backgroundColor: '#e0e0e0',
+                color: '#666'
+              }}
+            >
+              {(fileName || (typeof value === 'string' && value) || '').toLowerCase().endsWith('.pdf') ? (
+                <PictureAsPdfIcon sx={{ fontSize: 28 }} />
+              ) : (
+                <InsertDriveFileIcon sx={{ fontSize: 28 }} />
+              )}
+            </Box>
+          )}
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="caption" color="textSecondary" sx={{ wordBreak: 'break-all' }}>
+              {fileName || (value && typeof value === 'string' ? value.split('/').pop() : 'File attached')}
+            </Typography>
+          </Box>
+          {isPdf() ? (
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={handleDownload}
+              title="Download PDF"
+            >
+              <DownloadIcon fontSize="small" />
+            </IconButton>
+          ) : (
+            <IconButton
+              size="small"
+              color="primary"
+              onClick={handleView}
+              title="View document"
+            >
+              <VisibilityIcon fontSize="small" />
+            </IconButton>
+          )}
+          <IconButton 
+            size="small" 
+            color="error" 
+            onClick={handleClear}
+            title="Remove file"
+          >
+            <DeleteIcon fontSize="small" />
+          </IconButton>
+        </Box>
+      )}
+
+      {!fileName && !value && (
+        <Typography variant="caption" color="textSecondary">
+          No file chosen
+        </Typography>
+      )}
+
+      {/* View document modal */}
+      <Dialog
+        open={viewModalOpen}
+        onClose={handleCloseModal}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>{label}</span>
+          <IconButton size="small" onClick={handleCloseModal} aria-label="close">
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0, minHeight: 400, backgroundColor: '#fafafa' }}>
+          {modalContentUrl?.type === 'image' && modalContentUrl.url && (
+            <Box
+              component="img"
+              src={modalContentUrl.url}
+              alt="Document"
+              sx={{
+                width: '100%',
+                maxHeight: '70vh',
+                objectFit: 'contain',
+                display: 'block',
+                margin: '0 auto',
+              }}
+            />
+          )}
+          {modalContentUrl?.type === 'pdf' && modalContentUrl.url && (
+            <Box sx={{ width: '100%', height: '70vh', minHeight: 400, display: 'flex', flexDirection: 'column' }}>
+              <Box sx={{ px: 2, py: 1, backgroundColor: '#f0f0f0', display: 'flex', justifyContent: 'flex-end' }}>
+                <Button
+                  size="small"
+                  href={modalContentUrl.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open in new tab
+                </Button>
+              </Box>
+              <Box
+                component="iframe"
+                src={
+                  modalContentUrl.url.startsWith('http')
+                    ? `https://docs.google.com/viewer?url=${encodeURIComponent(modalContentUrl.url)}&embedded=true`
+                    : modalContentUrl.url
+                }
+                title="PDF Document"
+                sx={{
+                  flex: 1,
+                  width: '100%',
+                  minHeight: 380,
+                  border: 'none',
+                }}
+              />
+            </Box>
+          )}
+          {modalContentUrl?.type === 'filename' && (
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <InsertDriveFileIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+              <Typography variant="h6" gutterBottom>
+                {modalContentUrl.name || 'Document'}
+              </Typography>
+              <Typography variant="body2" color="textSecondary">
+                Preview is not available for this file. The document is stored as a reference.
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseModal} color="primary" variant="contained">
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};
 
 const EditStaff = () => {
   const params = useParams();
+  const router = useRouter();
+  const [warehouses, setWarehouses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
-    // Personal Details
     staffName: '',
     gender: 'Male',
     dob: '',
@@ -33,84 +395,123 @@ const EditStaff = () => {
     qualification: '',
     experience: '',
     address: '',
-    
-    // Company Details
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    district: '',
+    pinCode: '',
+    state: '',
     branchName: '',
     designation: '',
     department: '',
+    role: 'Operator',
+    warehouse: '',
     salary: '',
     joiningDate: '',
-    
-    // Documents
     resumeCertificate: '',
     highestQualificationCertificate: '',
     panCard: '',
     aadharCard: '',
-    
-    // Bank Details
     accountHolderName: '',
     accountNumber: '',
     bankName: '',
     ifscCode: '',
     bankBranch: '',
-    branchLocation: ''
+    branchLocation: '',
+    permissionRoleId: ''
   });
 
-  // Sample staff data (in real app, this would come from API)
-  const sampleStaffData = {
-    id: "STAFF001",
-    staffName: "Priya Singh",
-    gender: "Female",
-    dob: "1990-05-15",
-    mobileNo: "9876543210",
-    emailId: "priya.singh@company.com",
-    qualification: "MBA",
-    experience: "5 years",
-    address: "123 Business Park, Mumbai, Maharashtra",
-    branchName: "Head Office",
-    designation: "Office Administrator",
-    department: "Administration",
-    salary: 55000,
-    joiningDate: "2020-01-15",
-    resumeCertificate: "resume_priya.pdf",
-    highestQualificationCertificate: "mba_cert.pdf",
-    panCard: "ABCDE1234F",
-    aadharCard: "123456789012",
-    accountHolderName: "Priya Singh",
-    accountNumber: "1234567890",
-    bankName: "HDFC Bank",
-    ifscCode: "HDFC0001234",
-    bankBranch: "Mumbai Branch",
-    branchLocation: "Mumbai"
-  };
+  const [permissionRoles, setPermissionRoles] = useState([]);
 
   useEffect(() => {
-    // In real app, fetch staff data by ID from API
-    setFormData(sampleStaffData);
+    fetchWarehouses().then(setWarehouses).catch(() => setWarehouses([]));
+    fetchRoles().then(setPermissionRoles).catch(() => setPermissionRoles([]));
+  }, []);
+
+  useEffect(() => {
+    if (!params?.id) return;
+    setLoading(true);
+    fetchStaffById(params.id)
+      .then((data) => {
+        setFormData({
+          ...data,
+          addressLine1: data.addressLine1 || data.address,
+          addressLine2: data.addressLine2 || '',
+          city: data.city || '',
+          district: data.district || '',
+          pinCode: data.pinCode || '',
+          state: data.state || '',
+          // Ensure all document fields are properly set
+          resumeCertificate: data.resumeCertificate || '',
+          highestQualificationCertificate: data.highestQualificationCertificate || '',
+          panCard: data.panCard || '',
+          aadharCard: data.aadharCard || '',
+        });
+      })
+      .catch((err) => setError(err.message || 'Failed to load staff'))
+      .finally(() => setLoading(false));
   }, [params.id]);
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setFormData(prev => {
+      const next = { ...prev, [field]: value };
+      if (field === 'permissionRoleId') {
+        const role = permissionRoles.find(r => r._id === value || r.id === value);
+        next.role = role ? role.name : (value ? value : prev.role || 'Staff');
+      }
+      if (field === 'branchWarehouse') {
+        next.branchName = value;
+        next.warehouse = value;
+      }
+      if (field === 'address') next.addressLine1 = value;
+      return next;
+    });
   };
 
-  const handleSubmit = (e) => {
+  const handleDocumentChange = (field, file) => {
+    setFormData(prev => ({ ...prev, [field]: file }));
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Updated Staff Data:', formData);
-    // Here you would typically send data to API
-    alert('Staff updated successfully!');
-    window.location.href = '/staff';
+    setError('');
+    setSubmitting(true);
+    try {
+      const payload = {
+        ...formData,
+        addressLine1: formData.addressLine1 || formData.address,
+        addressLine2: formData.addressLine2,
+        city: formData.city,
+        district: formData.district,
+        pinCode: formData.pinCode,
+        state: formData.state,
+      };
+      
+      // If you need to handle file uploads separately, do it here
+      // For now, we're including the file names/paths in the payload
+      
+      await updateStaff(params.id, payload);
+      router.push('/staff');
+    } catch (err) {
+      setError(err.message || 'Failed to update staff');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleCancel = () => {
-    window.history.back();
-  };
+  const handleCancel = () => router.back();
+
+  if (loading) {
+    return (
+      <div className="content-area" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
+        <CircularProgress />
+      </div>
+    );
+  }
 
   return (
     <div className="content-area">
-      
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       <form onSubmit={handleSubmit}>
         <Grid container spacing={3}>
           {/* Personal Details */}
@@ -193,11 +594,54 @@ const EditStaff = () => {
                   <Grid size={{ xs: 12 }}>
                     <TextField
                       fullWidth
-                      label="Address"
-                      multiline
-                      rows={3}
-                      value={formData.address}
-                      onChange={(e) => handleInputChange('address', e.target.value)}
+                      label="Address Line 1 *"
+                      value={formData.addressLine1 || formData.address}
+                      onChange={(e) => handleInputChange('addressLine1', e.target.value)}
+                      required
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12 }}>
+                    <TextField
+                      fullWidth
+                      label="Address Line 2"
+                      value={formData.addressLine2}
+                      onChange={(e) => handleInputChange('addressLine2', e.target.value)}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      fullWidth
+                      label="City *"
+                      value={formData.city}
+                      onChange={(e) => handleInputChange('city', e.target.value)}
+                      required
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      fullWidth
+                      label="District *"
+                      value={formData.district}
+                      onChange={(e) => handleInputChange('district', e.target.value)}
+                      required
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      fullWidth
+                      label="Pin Code *"
+                      value={formData.pinCode}
+                      onChange={(e) => handleInputChange('pinCode', e.target.value)}
+                      required
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth
+                      label="State *"
+                      value={formData.state}
+                      onChange={(e) => handleInputChange('state', e.target.value)}
+                      required
                     />
                   </Grid>
                 </Grid>
@@ -215,18 +659,21 @@ const EditStaff = () => {
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <FormControl fullWidth>
-                      <InputLabel>Branch Name *</InputLabel>
+                      <InputLabel>Branch / Warehouse *</InputLabel>
                       <Select
-                        value={formData.branchName}
-                        onChange={(e) => handleInputChange('branchName', e.target.value)}
+                        value={formData.branchName || formData.warehouse || ''}
+                        onChange={(e) => handleInputChange('branchWarehouse', e.target.value)}
+                        label="Branch / Warehouse *"
                         required
                       >
-                        <MenuItem value="Head Office">Head Office</MenuItem>
-                        <MenuItem value="Delhi Branch">Delhi Branch</MenuItem>
-                        <MenuItem value="Mumbai Branch">Mumbai Branch</MenuItem>
-                        <MenuItem value="Bangalore Branch">Bangalore Branch</MenuItem>
-                        <MenuItem value="Chennai Branch">Chennai Branch</MenuItem>
-                        <MenuItem value="Kolkata Branch">Kolkata Branch</MenuItem>
+                        <MenuItem value="">
+                          <em>Select branch or warehouse</em>
+                        </MenuItem>
+                        {(warehouses || []).map((w) => {
+                          const name = w.name || w.warehouseName || w.branchName;
+                          const id = w._id || w.id;
+                          return <MenuItem key={id} value={name}>{name}</MenuItem>;
+                        })}
                       </Select>
                     </FormControl>
                   </Grid>
@@ -245,16 +692,27 @@ const EditStaff = () => {
                       <Select
                         value={formData.department}
                         onChange={(e) => handleInputChange('department', e.target.value)}
+                        label="Department *"
                         required
                       >
-                        <MenuItem value="Administration">Administration</MenuItem>
-                        <MenuItem value="Support">Support</MenuItem>
-                        <MenuItem value="Maintenance">Maintenance</MenuItem>
-                        <MenuItem value="Security">Security</MenuItem>
-                        <MenuItem value="Housekeeping">Housekeeping</MenuItem>
-                        <MenuItem value="HR">HR</MenuItem>
-                        <MenuItem value="Finance">Finance</MenuItem>
-                        <MenuItem value="IT">IT</MenuItem>
+                        {DEPARTMENTS.map((d) => <MenuItem key={d} value={d}>{d}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <FormControl fullWidth>
+                      <InputLabel>Role</InputLabel>
+                      <Select
+                        value={formData.permissionRoleId || ''}
+                        onChange={(e) => handleInputChange('permissionRoleId', e.target.value || '')}
+                        label="Role"
+                      >
+                        <MenuItem value="">
+                          <em>None</em>
+                        </MenuItem>
+                        {(permissionRoles || []).map((r) => (
+                          <MenuItem key={r._id} value={r._id}>{r.name}</MenuItem>
+                        ))}
                       </Select>
                     </FormControl>
                   </Grid>
@@ -293,92 +751,36 @@ const EditStaff = () => {
                 </Typography>
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 12, sm: 6 }}>
-                    <Box sx={{ marginBottom: 2 }}>
-                      <Typography variant="body2" sx={{ marginBottom: 1, fontWeight: 'bold' }}>
-                        Highest Qualification Certificate
-                      </Typography>
-                      <input
-                        type="file"
-                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        onChange={(e) => handleInputChange('highestQualificationCertificate', e.target.files[0]?.name || '')}
-                        style={{ 
-                          width: '100%',
-                          padding: '8px',
-                          border: '1px solid #ccc',
-                          borderRadius: '4px',
-                          backgroundColor: '#fff'
-                        }}
-                      />
-                      <Typography variant="caption" color="textSecondary">
-                        {formData.highestQualificationCertificate || 'No file chosen'}
-                      </Typography>
-                    </Box>
+                    <DocumentUpload
+                      label="Highest Qualification Certificate"
+                      value={formData.highestQualificationCertificate}
+                      onChange={(file) => handleDocumentChange('highestQualificationCertificate', file)}
+                      fieldName="highestQualificationCertificate"
+                    />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
-                    <Box sx={{ marginBottom: 2 }}>
-                      <Typography variant="body2" sx={{ marginBottom: 1, fontWeight: 'bold' }}>
-                        Aadhar Card
-                      </Typography>
-                      <input
-                        type="file"
-                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        onChange={(e) => handleInputChange('aadharCard', e.target.files[0]?.name || '')}
-                        style={{ 
-                          width: '100%',
-                          padding: '8px',
-                          border: '1px solid #ccc',
-                          borderRadius: '4px',
-                          backgroundColor: '#fff'
-                        }}
-                      />
-                      <Typography variant="caption" color="textSecondary">
-                        {formData.aadharCard || 'No file chosen'}
-                      </Typography>
-                    </Box>
+                    <DocumentUpload
+                      label="Aadhar Card"
+                      value={formData.aadharCard}
+                      onChange={(file) => handleDocumentChange('aadharCard', file)}
+                      fieldName="aadharCard"
+                    />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
-                    <Box sx={{ marginBottom: 2 }}>
-                      <Typography variant="body2" sx={{ marginBottom: 1, fontWeight: 'bold' }}>
-                        Pan Card
-                      </Typography>
-                      <input
-                        type="file"
-                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        onChange={(e) => handleInputChange('panCard', e.target.files[0]?.name || '')}
-                        style={{ 
-                          width: '100%',
-                          padding: '8px',
-                          border: '1px solid #ccc',
-                          borderRadius: '4px',
-                          backgroundColor: '#fff'
-                        }}
-                      />
-                      <Typography variant="caption" color="textSecondary">
-                        {formData.panCard || 'No file chosen'}
-                      </Typography>
-                    </Box>
+                    <DocumentUpload
+                      label="Pan Card"
+                      value={formData.panCard}
+                      onChange={(file) => handleDocumentChange('panCard', file)}
+                      fieldName="panCard"
+                    />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
-                    <Box sx={{ marginBottom: 2 }}>
-                      <Typography variant="body2" sx={{ marginBottom: 1, fontWeight: 'bold' }}>
-                        Resume Certificate
-                      </Typography>
-                      <input
-                        type="file"
-                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        onChange={(e) => handleInputChange('resumeCertificate', e.target.files[0]?.name || '')}
-                        style={{ 
-                          width: '100%',
-                          padding: '8px',
-                          border: '1px solid #ccc',
-                          borderRadius: '4px',
-                          backgroundColor: '#fff'
-                        }}
-                      />
-                      <Typography variant="caption" color="textSecondary">
-                        {formData.resumeCertificate || 'No file chosen'}
-                      </Typography>
-                    </Box>
+                    <DocumentUpload
+                      label="Resume Certificate"
+                      value={formData.resumeCertificate}
+                      onChange={(file) => handleDocumentChange('resumeCertificate', file)}
+                      fieldName="resumeCertificate"
+                    />
                   </Grid>
                 </Grid>
               </CardContent>
@@ -459,9 +861,10 @@ const EditStaff = () => {
               <Button
                 type="submit"
                 variant="contained"
+                disabled={submitting}
                 sx={{ minWidth: 120, transform: 'none', textTransform: 'none' }}
               >
-                Update Staff
+                {submitting ? <CircularProgress size={24} /> : 'Update Staff'}
               </Button>
             </Box>
           </Grid>

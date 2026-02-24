@@ -19,12 +19,14 @@ import {
 } from "@mui/material";
 import { Search, Add, VisibilityOutlined, EditOutlined, DeleteOutlined } from "@mui/icons-material";
 import { 
-  subcategoriesData, 
-  getCategories, 
-  addSubcategory, 
+  fetchSubcategories, 
+  fetchCategories, 
+  createSubcategory, 
   updateSubcategory, 
-  deleteSubcategory 
-} from '../sharedData';
+  deleteSubcategory,
+  subcategoryFromApi,
+  categoryFromApi
+} from '../../../lib/itemApi';
 import CommonDialog from '../../../components/CommonDialog';
 import CreateSubcategory from '../../../components/Subcategories/Create';
 import EditSubcategory from '../../../components/Subcategories/Edit';
@@ -41,12 +43,30 @@ const Subcategories = () => {
   const [deleteShow, setDeleteShow] = useState(false);
   const [selectedSubcategory, setSelectedSubcategory] = useState(null);
 
-  // Data states
-  const [subcategoriesDataState, setSubcategoriesDataState] = useState(subcategoriesData);
+  const [subcategoriesDataState, setSubcategoriesDataState] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setCategories(getCategories());
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [subs, cats] = await Promise.all([fetchSubcategories(), fetchCategories()]);
+        if (!cancelled) {
+          setSubcategoriesDataState(subs);
+          setCategories(cats);
+        }
+      } catch (e) {
+        if (!cancelled) setError(e.message || "Failed to load data");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const filteredSubcategories = subcategoriesDataState.filter(subcategory => {
@@ -71,7 +91,7 @@ const Subcategories = () => {
 
   const getCategoryName = (categoryId) => {
     const category = categories.find(cat => cat.id === categoryId);
-    return category ? category.categoryName : 'Unknown';
+    return category ? (category.categoryName || category.name) : 'Unknown';
   };
 
   const handleCreateSubcategory = () => {
@@ -94,21 +114,39 @@ const Subcategories = () => {
     setDeleteShow(true);
   };
 
-  const handleSaveSubcategory = (subcategoryData) => {
-    if (openData) {
-      // Create new subcategory
-      const newSubcategory = addSubcategory(subcategoryData);
-      setSubcategoriesDataState([...subcategoriesData]);
-    } else if (editShow) {
-      // Update existing subcategory
-      updateSubcategory(selectedSubcategory.id, subcategoryData);
-      setSubcategoriesDataState([...subcategoriesData]);
+  const handleSaveSubcategory = async (subcategoryData) => {
+    setSaving(true);
+    setError(null);
+    try {
+      if (openData) {
+        const created = await createSubcategory(subcategoryData);
+        setSubcategoriesDataState((prev) => [subcategoryFromApi(created), ...prev]);
+      } else if (editShow && selectedSubcategory?.id) {
+        const updated = await updateSubcategory(selectedSubcategory.id, subcategoryData);
+        setSubcategoriesDataState((prev) =>
+          prev.map((s) => (s.id === selectedSubcategory.id ? subcategoryFromApi(updated) : s))
+        );
+      }
+      handleClose();
+    } catch (e) {
+      setError(e.message || "Failed to save subcategory");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDeleteConfirm = (id) => {
-    deleteSubcategory(id);
-    setSubcategoriesDataState([...subcategoriesData]);
+  const handleDeleteConfirm = async (id) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await deleteSubcategory(id);
+      setSubcategoriesDataState((prev) => prev.filter((s) => s.id !== id));
+      handleClose();
+    } catch (e) {
+      setError(e.message || "Failed to delete subcategory");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleClose = () => {
@@ -123,8 +161,21 @@ const Subcategories = () => {
     setPage(newPage - 1);
   };
 
+  if (loading) {
+    return (
+      <div className="content-area">
+        <Typography color="text.secondary">Loading subcategories...</Typography>
+      </div>
+    );
+  }
+
   return (
     <div className="content-area">
+      {error && (
+        <Box sx={{ mb: 2, p: 1.5, bgcolor: "error.light", color: "error.contrastText", borderRadius: 1 }}>
+          {error}
+        </Box>
+      )}
       {/* Search and Add Button */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px', mb: 3 }}>
         <TextField
@@ -250,6 +301,7 @@ const Subcategories = () => {
             <CreateSubcategory
               onClose={handleClose}
               onSave={handleSaveSubcategory}
+              categories={categories}
             />
           ) : viewShow ? (
             <ViewSubcategory
@@ -269,6 +321,7 @@ const Subcategories = () => {
               subcategoryData={selectedSubcategory}
               onClose={handleClose}
               onSave={handleSaveSubcategory}
+              categories={categories}
             />
           ) : deleteShow ? (
             <DeleteSubcategory

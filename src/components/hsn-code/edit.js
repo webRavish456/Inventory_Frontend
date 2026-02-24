@@ -2,46 +2,33 @@
 import { Button, Grid, TextField, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
 import { useState, useEffect } from "react";
 
-const EditHSN = ({ hsnData, onClose, onSave }) => {
+const EditHSN = ({ hsnData, onClose, onSave, categories = [], subcategories = [] }) => {
   const [formData, setFormData] = useState({
     hsnCode: "",
     description: "",
     taxRate: "",
     category: "",
+    categoryId: "",
     subCategory: "",
+    subCategoryId: "",
     status: "Active"
   });
 
-  const categories = [
-    "Electronics",
-    "Furniture", 
-    "Clothing",
-    "Books",
-    "Home & Garden",
-    "Sports",
-    "Automotive",
-    "Health & Beauty"
-  ];
-
-  const subCategories = {
-    "Electronics": ["Smartphones", "Laptops", "Tablets", "Accessories"],
-    "Furniture": ["Office Chairs", "Desks", "Storage", "Lighting"],
-    "Clothing": ["Men's Wear", "Women's Wear", "Kids Wear", "Accessories"],
-    "Books": ["Fiction", "Non-Fiction", "Educational", "Reference"],
-    "Home & Garden": ["Kitchen", "Bathroom", "Garden Tools", "Decor"],
-    "Sports": ["Fitness", "Outdoor", "Team Sports", "Equipment"],
-    "Automotive": ["Parts", "Accessories", "Tools", "Maintenance"],
-    "Health & Beauty": ["Skincare", "Haircare", "Supplements", "Tools"]
-  };
+  const catList = categories;
+  const subList = formData.categoryId
+    ? subcategories.filter(s => String(s.categoryId || s.category) === String(formData.categoryId))
+    : subcategories;
 
   useEffect(() => {
     if (hsnData) {
       setFormData({
-        hsnCode: hsnData.hsnCode || "",
+        hsnCode: hsnData.hsnCode || hsnData.code || "",
         description: hsnData.description || "",
         taxRate: hsnData.taxRate || "",
         category: hsnData.category || "",
+        categoryId: hsnData.categoryId || hsnData.category || "",
         subCategory: hsnData.subCategory || "",
+        subCategoryId: hsnData.subCategoryId || hsnData.subCategory || "",
         status: hsnData.status || "Active"
       });
     }
@@ -49,12 +36,31 @@ const EditHSN = ({ hsnData, onClose, onSave }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    if (name === "categoryId") {
+      const cat = catList.find(c => c.id === value);
+      setFormData({
+        ...formData,
+        categoryId: value,
+        category: cat?.name || cat?.categoryName || value,
+        subCategoryId: "",
+        subCategory: ""
+      });
+    } else if (name === "subCategoryId") {
+      const sub = subList.find(s => s.id === value);
+      setFormData({
+        ...formData,
+        subCategoryId: value,
+        subCategory: sub?.name || sub?.subCategoryName || value
+      });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
   };
 
   const handleSave = () => {
     if (onSave) {
-      onSave(formData);
+      const payload = { ...formData, categoryId: formData.categoryId || formData.category, subCategoryId: formData.subCategoryId || formData.subCategory };
+      onSave(payload);
     }
   };
 
@@ -87,14 +93,14 @@ const EditHSN = ({ hsnData, onClose, onSave }) => {
         <FormControl fullWidth required>
           <InputLabel>Category</InputLabel>
           <Select
-            name="category"
-            value={formData.category}
+            name="categoryId"
+            value={formData.categoryId || formData.category}
             onChange={handleChange}
             label="Category"
           >
-            {categories.map((category) => (
-              <MenuItem key={category} value={category}>
-                {category}
+            {catList.map((c) => (
+              <MenuItem key={c.id} value={c.id}>
+                {c.name || c.categoryName}
               </MenuItem>
             ))}
           </Select>
@@ -104,15 +110,15 @@ const EditHSN = ({ hsnData, onClose, onSave }) => {
         <FormControl fullWidth required>
           <InputLabel>Subcategory</InputLabel>
           <Select
-            name="subCategory"
-            value={formData.subCategory}
+            name="subCategoryId"
+            value={formData.subCategoryId || formData.subCategory}
             onChange={handleChange}
             label="Subcategory"
-            disabled={!formData.category}
+            disabled={!formData.categoryId}
           >
-            {formData.category && subCategories[formData.category]?.map((subCategory) => (
-              <MenuItem key={subCategory} value={subCategory}>
-                {subCategory}
+            {subList.map((s) => (
+              <MenuItem key={s.id} value={s.id}>
+                {s.name || s.subCategoryName}
               </MenuItem>
             ))}
           </Select>

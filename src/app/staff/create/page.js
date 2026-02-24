@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Box,
   TextField,
@@ -17,12 +18,22 @@ import {
   FormLabel,
   Card,
   CardContent,
-  Divider,
+  Alert,
+  CircularProgress,
 } from "@mui/material";
+import { createStaff, fetchWarehouses } from "@/lib/staffApi";
+import { fetchRoles } from "@/lib/rolesApi";
+
+const DEPARTMENTS = ['Warehouse', 'Sales', 'Purchase', 'Finance', 'IT', 'HR', 'Administration', 'Support', 'Maintenance', 'Security', 'Housekeeping'];
 
 const CreateStaff = () => {
+  const router = useRouter();
+  const [warehouses, setWarehouses] = useState([]);
+  const [permissionRoles, setPermissionRoles] = useState([]);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
   const [formData, setFormData] = useState({
-    // Personal Details
     staffName: '',
     gender: 'Male',
     dob: '',
@@ -31,21 +42,24 @@ const CreateStaff = () => {
     qualification: '',
     experience: '',
     address: '',
-    
-    // Company Details
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    district: '',
+    pinCode: '',
+    state: '',
     branchName: '',
     designation: '',
     department: '',
+    role: '',
+    permissionRoleId: '',
+    warehouse: '',
     salary: '',
     joiningDate: '',
-    
-    // Documents
     resumeCertificate: '',
     highestQualificationCertificate: '',
     panCard: '',
     aadharCard: '',
-    
-    // Bank Details
     accountHolderName: '',
     accountNumber: '',
     bankName: '',
@@ -54,27 +68,55 @@ const CreateStaff = () => {
     branchLocation: ''
   });
 
+  useEffect(() => {
+    fetchWarehouses().then(setWarehouses).catch(() => setWarehouses([]));
+    fetchRoles().then(setPermissionRoles).catch(() => setPermissionRoles([]));
+  }, []);
+
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setFormData(prev => {
+      const next = { ...prev, [field]: value };
+      if (field === 'permissionRoleId') {
+        const role = permissionRoles.find(r => r._id === value || r.id === value);
+        next.role = role ? role.name : (value || '');
+      }
+      if (field === 'branchWarehouse') {
+        next.branchName = value;
+        next.warehouse = value;
+      }
+      if (field === 'address') next.addressLine1 = value;
+      return next;
+    });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Staff Data:', formData);
-    // Here you would typically send data to API
-    alert('Staff created successfully!');
+    setError('');
+    setSubmitting(true);
+    try {
+      const payload = {
+        ...formData,
+        addressLine1: formData.addressLine1 || formData.address,
+        addressLine2: formData.addressLine2,
+        city: formData.city,
+        district: formData.district,
+        pinCode: formData.pinCode,
+        state: formData.state,
+      };
+      await createStaff(payload);
+      router.push('/staff');
+    } catch (err) {
+      setError(err.message || 'Failed to create staff');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleCancel = () => {
-    // Navigate back to staff list
-    window.history.back();
-  };
+  const handleCancel = () => router.back();
 
   return (
     <div className="content-area">
+      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       <form onSubmit={handleSubmit}>
         <Grid container spacing={3}>
           {/* Personal Details */}
@@ -157,11 +199,54 @@ const CreateStaff = () => {
                   <Grid size={{ xs: 12 }}>
                     <TextField
                       fullWidth
-                      label="Address"
-                      multiline
-                      rows={3}
-                      value={formData.address}
-                      onChange={(e) => handleInputChange('address', e.target.value)}
+                      label="Address Line 1 *"
+                      value={formData.addressLine1 || formData.address}
+                      onChange={(e) => handleInputChange('addressLine1', e.target.value)}
+                      required
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12 }}>
+                    <TextField
+                      fullWidth
+                      label="Address Line 2"
+                      value={formData.addressLine2}
+                      onChange={(e) => handleInputChange('addressLine2', e.target.value)}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      fullWidth
+                      label="City *"
+                      value={formData.city}
+                      onChange={(e) => handleInputChange('city', e.target.value)}
+                      required
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      fullWidth
+                      label="District *"
+                      value={formData.district}
+                      onChange={(e) => handleInputChange('district', e.target.value)}
+                      required
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 4 }}>
+                    <TextField
+                      fullWidth
+                      label="Pin Code *"
+                      value={formData.pinCode}
+                      onChange={(e) => handleInputChange('pinCode', e.target.value)}
+                      required
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth
+                      label="State *"
+                      value={formData.state}
+                      onChange={(e) => handleInputChange('state', e.target.value)}
+                      required
                     />
                   </Grid>
                 </Grid>
@@ -179,18 +264,21 @@ const CreateStaff = () => {
                 <Grid container spacing={2}>
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <FormControl fullWidth>
-                      <InputLabel>Branch Name *</InputLabel>
+                      <InputLabel>Branch / Warehouse *</InputLabel>
                       <Select
-                        value={formData.branchName}
-                        onChange={(e) => handleInputChange('branchName', e.target.value)}
+                        value={formData.branchName || formData.warehouse || ''}
+                        onChange={(e) => handleInputChange('branchWarehouse', e.target.value)}
+                        label="Branch / Warehouse *"
                         required
                       >
-                        <MenuItem value="Head Office">Head Office</MenuItem>
-                        <MenuItem value="Delhi Branch">Delhi Branch</MenuItem>
-                        <MenuItem value="Mumbai Branch">Mumbai Branch</MenuItem>
-                        <MenuItem value="Bangalore Branch">Bangalore Branch</MenuItem>
-                        <MenuItem value="Chennai Branch">Chennai Branch</MenuItem>
-                        <MenuItem value="Kolkata Branch">Kolkata Branch</MenuItem>
+                        <MenuItem value="">
+                          <em>Select branch or warehouse</em>
+                        </MenuItem>
+                        {(warehouses || []).map((w) => {
+                          const name = w.name || w.warehouseName || w.branchName;
+                          const id = w._id || w.id;
+                          return <MenuItem key={id} value={name}>{name}</MenuItem>;
+                        })}
                       </Select>
                     </FormControl>
                   </Grid>
@@ -209,16 +297,28 @@ const CreateStaff = () => {
                       <Select
                         value={formData.department}
                         onChange={(e) => handleInputChange('department', e.target.value)}
+                        label="Department *"
                         required
                       >
-                        <MenuItem value="Administration">Administration</MenuItem>
-                        <MenuItem value="Support">Support</MenuItem>
-                        <MenuItem value="Maintenance">Maintenance</MenuItem>
-                        <MenuItem value="Security">Security</MenuItem>
-                        <MenuItem value="Housekeeping">Housekeeping</MenuItem>
-                        <MenuItem value="HR">HR</MenuItem>
-                        <MenuItem value="Finance">Finance</MenuItem>
-                        <MenuItem value="IT">IT</MenuItem>
+                        {DEPARTMENTS.map((d) => <MenuItem key={d} value={d}>{d}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <FormControl fullWidth>
+                      <InputLabel>Role *</InputLabel>
+                      <Select
+                        value={formData.permissionRoleId || ''}
+                        onChange={(e) => handleInputChange('permissionRoleId', e.target.value || '')}
+                        label="Role *"
+                        required
+                      >
+                        <MenuItem value="">
+                          <em>Select role</em>
+                        </MenuItem>
+                        {(permissionRoles || []).map((r) => (
+                          <MenuItem key={r._id} value={r._id}>{r.name}</MenuItem>
+                        ))}
                       </Select>
                     </FormControl>
                   </Grid>
@@ -264,7 +364,7 @@ const CreateStaff = () => {
                       <input
                         type="file"
                         accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        onChange={(e) => handleInputChange('highestQualificationCertificate', e.target.files[0]?.name || '')}
+                        onChange={(e) => handleInputChange('highestQualificationCertificate', e.target.files[0] ?? null)}
                         style={{ 
                           width: '100%',
                           padding: '8px',
@@ -274,7 +374,9 @@ const CreateStaff = () => {
                         }}
                       />
                       <Typography variant="caption" color="textSecondary">
-                        {formData.highestQualificationCertificate || 'No file chosen'}
+                        {formData.highestQualificationCertificate instanceof File
+                          ? formData.highestQualificationCertificate.name
+                          : (formData.highestQualificationCertificate || 'No file chosen')}
                       </Typography>
                     </Box>
                   </Grid>
@@ -286,7 +388,7 @@ const CreateStaff = () => {
                       <input
                         type="file"
                         accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        onChange={(e) => handleInputChange('aadharCard', e.target.files[0]?.name || '')}
+                        onChange={(e) => handleInputChange('aadharCard', e.target.files[0] ?? null)}
                         style={{ 
                           width: '100%',
                           padding: '8px',
@@ -296,7 +398,9 @@ const CreateStaff = () => {
                         }}
                       />
                       <Typography variant="caption" color="textSecondary">
-                        {formData.aadharCard || 'No file chosen'}
+                        {formData.aadharCard instanceof File
+                          ? formData.aadharCard.name
+                          : (formData.aadharCard || 'No file chosen')}
                       </Typography>
                     </Box>
                   </Grid>
@@ -308,7 +412,7 @@ const CreateStaff = () => {
                       <input
                         type="file"
                         accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        onChange={(e) => handleInputChange('panCard', e.target.files[0]?.name || '')}
+                        onChange={(e) => handleInputChange('panCard', e.target.files[0] ?? null)}
                         style={{ 
                           width: '100%',
                           padding: '8px',
@@ -318,7 +422,9 @@ const CreateStaff = () => {
                         }}
                       />
                       <Typography variant="caption" color="textSecondary">
-                        {formData.panCard || 'No file chosen'}
+                        {formData.panCard instanceof File
+                          ? formData.panCard.name
+                          : (formData.panCard || 'No file chosen')}
                       </Typography>
                     </Box>
                   </Grid>
@@ -330,7 +436,7 @@ const CreateStaff = () => {
                       <input
                         type="file"
                         accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                        onChange={(e) => handleInputChange('resumeCertificate', e.target.files[0]?.name || '')}
+                        onChange={(e) => handleInputChange('resumeCertificate', e.target.files[0] ?? null)}
                         style={{ 
                           width: '100%',
                           padding: '8px',
@@ -340,7 +446,9 @@ const CreateStaff = () => {
                         }}
                       />
                       <Typography variant="caption" color="textSecondary">
-                        {formData.resumeCertificate || 'No file chosen'}
+                        {formData.resumeCertificate instanceof File
+                          ? formData.resumeCertificate.name
+                          : (formData.resumeCertificate || 'No file chosen')}
                       </Typography>
                     </Box>
                   </Grid>
@@ -423,9 +531,10 @@ const CreateStaff = () => {
               <Button
                 type="submit"
                 variant="contained"
+                disabled={submitting}
                 sx={{ minWidth: 120, transform: 'none', textTransform: 'none' }}
               >
-                Save Staff
+                {submitting ? <CircularProgress size={24} /> : 'Save Staff'}
               </Button>
             </Box>
           </Grid>

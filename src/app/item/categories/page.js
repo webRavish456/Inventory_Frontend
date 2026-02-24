@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Table,
@@ -16,7 +16,7 @@ import {
   Stack,
 } from "@mui/material";
 import { Search, Add, VisibilityOutlined, EditOutlined, DeleteOutlined } from "@mui/icons-material";
-import { getCategories, addCategory, updateCategory, deleteCategory, categoriesData } from '../sharedData';
+import { fetchCategories, createCategory, updateCategory, deleteCategory, categoryFromApi } from '../../../lib/itemApi';
 import CommonDialog from '../../../components/CommonDialog';
 import CreateCategory from '../../../components/Categories/Create';
 import EditCategory from '../../../components/Categories/Edit';
@@ -33,8 +33,27 @@ const Categories = () => {
   const [deleteShow, setDeleteShow] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null);
 
-  // Categories data
-  const [categoriesDataState, setCategoriesDataState] = useState(categoriesData);
+  const [categoriesDataState, setCategoriesDataState] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const list = await fetchCategories();
+        if (!cancelled) setCategoriesDataState(list);
+      } catch (e) {
+        if (!cancelled) setError(e.message || "Failed to load categories");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const filteredCategories = categoriesDataState.filter(category =>
     category.categoryName.toLowerCase().includes(search.toLowerCase()) ||
@@ -72,21 +91,39 @@ const Categories = () => {
     setDeleteShow(true);
   };
 
-  const handleSaveCategory = (categoryData) => {
-    if (openData) {
-      // Create new category
-      const newCategory = addCategory(categoryData);
-      setCategoriesDataState([...categoriesData]);
-    } else if (editShow) {
-      // Update existing category
-      updateCategory(selectedCategory.id, categoryData);
-      setCategoriesDataState([...categoriesData]);
+  const handleSaveCategory = async (categoryData) => {
+    setSaving(true);
+    setError(null);
+    try {
+      if (openData) {
+        const created = await createCategory(categoryData);
+        setCategoriesDataState((prev) => [categoryFromApi(created), ...prev]);
+      } else if (editShow && selectedCategory?.id) {
+        const updated = await updateCategory(selectedCategory.id, categoryData);
+        setCategoriesDataState((prev) =>
+          prev.map((c) => (c.id === selectedCategory.id ? categoryFromApi(updated) : c))
+        );
+      }
+      handleClose();
+    } catch (e) {
+      setError(e.message || "Failed to save category");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDeleteConfirm = (id) => {
-    deleteCategory(id);
-    setCategoriesDataState([...categoriesData]);
+  const handleDeleteConfirm = async (id) => {
+    setSaving(true);
+    setError(null);
+    try {
+      await deleteCategory(id);
+      setCategoriesDataState((prev) => prev.filter((c) => c.id !== id));
+      handleClose();
+    } catch (e) {
+      setError(e.message || "Failed to delete category");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleClose = () => {
@@ -100,9 +137,21 @@ const Categories = () => {
   // Get unique parent categories for dropdown
   const parentCategories = [...new Set(categoriesDataState.map(cat => cat.categoryName))];
 
+  if (loading) {
+    return (
+      <div className="content-area">
+        <Typography color="text.secondary">Loading categories...</Typography>
+      </div>
+    );
+  }
+
   return (
     <div className="content-area">
-      
+      {error && (
+        <Box sx={{ mb: 2, p: 1.5, bgcolor: "error.light", color: "error.contrastText", borderRadius: 1 }}>
+          {error}
+        </Box>
+      )}
       {/* Search and Create Button */}
       <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "1rem", marginBottom: "1rem" }}>
         <TextField
@@ -248,6 +297,7 @@ const Categories = () => {
               categoryData={selectedCategory}
               onClose={handleClose}
               onDelete={handleDeleteConfirm}
+              saving={saving}
             />
           ) : null
         }

@@ -2,25 +2,26 @@
 import { Button, Grid, TextField, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
 import { useState, useEffect } from "react";
 
-const EditCustomer = ({ customerData, onClose, onSave }) => {
+const EditCustomer = ({ customerData, onClose, onSave, saving }) => {
   const [formData, setFormData] = useState({
     customerName: "",
     email: "",
     phone: "",
+    companyName: "",
     address: "",
     city: "",
     state: "",
     pincode: "",
     gstNumber: "",
-    customerType: "",
+    panNumber: "",
+    creditLimit: "",
+    paymentTerms: "Net 30",
+    customerType: "Retail",
     status: "Active"
   });
 
-  const customerTypes = [
-    "Regular",
-    "Premium",
-    "VIP"
-  ];
+  const customerTypes = ["Retail", "Wholesale", "Corporate", "Individual"];
+  const paymentTermsOptions = ["Net 15", "Net 30", "Net 45", "Net 60", "Cash"];
 
   const states = [
     "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
@@ -37,12 +38,16 @@ const EditCustomer = ({ customerData, onClose, onSave }) => {
         customerName: customerData.customerName || "",
         email: customerData.email || "",
         phone: customerData.phone || "",
+        companyName: customerData.companyName || "",
         address: customerData.address || "",
         city: customerData.city || "",
         state: customerData.state || "",
         pincode: customerData.pincode || "",
         gstNumber: customerData.gstNumber || "",
-        customerType: customerData.customerType || "",
+        panNumber: customerData.panNumber || "",
+        creditLimit: customerData.creditLimit != null ? customerData.creditLimit : "",
+        paymentTerms: customerData.paymentTerms || "Net 30",
+        customerType: customerData.customerType || "Retail",
         status: customerData.status || "Active"
       });
     }
@@ -93,6 +98,16 @@ const EditCustomer = ({ customerData, onClose, onSave }) => {
           onChange={handleChange}
           required
           placeholder="Enter phone number"
+        />
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <TextField
+          fullWidth
+          label="Company Name"
+          name="companyName"
+          value={formData.companyName}
+          onChange={handleChange}
+          placeholder="Enter company name (optional)"
         />
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>
@@ -155,12 +170,49 @@ const EditCustomer = ({ customerData, onClose, onSave }) => {
           name="gstNumber"
           value={formData.gstNumber}
           onChange={handleChange}
-          required
-          placeholder="Enter GST number"
+          placeholder="Enter GST number (optional)"
         />
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>
-        <FormControl fullWidth required>
+        <TextField
+          fullWidth
+          label="PAN Number"
+          name="panNumber"
+          value={formData.panNumber}
+          onChange={handleChange}
+          placeholder="Enter PAN number (optional)"
+        />
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <TextField
+          fullWidth
+          label="Credit Limit"
+          name="creditLimit"
+          type="number"
+          value={formData.creditLimit}
+          onChange={handleChange}
+          placeholder="0"
+        />
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <FormControl fullWidth>
+          <InputLabel>Payment Terms</InputLabel>
+          <Select
+            name="paymentTerms"
+            value={formData.paymentTerms}
+            onChange={handleChange}
+            label="Payment Terms"
+          >
+            {paymentTermsOptions.map((term) => (
+              <MenuItem key={term} value={term}>
+                {term}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <FormControl fullWidth>
           <InputLabel>Customer Type</InputLabel>
           <Select
             name="customerType"
@@ -176,8 +228,8 @@ const EditCustomer = ({ customerData, onClose, onSave }) => {
           </Select>
         </FormControl>
       </Grid>
-      <Grid size={{ xs: 12 }}>
-        <FormControl fullWidth required>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <FormControl fullWidth>
           <InputLabel>Status</InputLabel>
           <Select
             name="status"
@@ -187,6 +239,7 @@ const EditCustomer = ({ customerData, onClose, onSave }) => {
           >
             <MenuItem value="Active">Active</MenuItem>
             <MenuItem value="Inactive">Inactive</MenuItem>
+            <MenuItem value="Blocked">Blocked</MenuItem>
           </Select>
         </FormControl>
       </Grid>
@@ -201,6 +254,7 @@ const EditCustomer = ({ customerData, onClose, onSave }) => {
         <Button 
           onClick={handleSave} 
           variant="contained" 
+          disabled={saving}
           sx={{ 
             backgroundColor: '#1976D2',
             '&:hover': { backgroundColor: '#1565C0' },
@@ -208,7 +262,7 @@ const EditCustomer = ({ customerData, onClose, onSave }) => {
             textTransform: 'none' 
           }}
         >
-          Update
+          {saving ? "Updating..." : "Update"}
         </Button>
       </Grid>
     </Grid>

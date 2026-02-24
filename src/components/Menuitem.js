@@ -13,7 +13,9 @@ import {
   ReceiptOutlined,
   AccountBalanceOutlined,
   AnalyticsOutlined,
+  SecurityOutlined,
 } from '@mui/icons-material';
+import VerticalShadesIcon from '@mui/icons-material/VerticalShades';
 
 const Menuitems = [
   {
@@ -40,6 +42,11 @@ const Menuitems = [
     icon: LocalShippingOutlined,
     label: "Supplier",
     href: "/supplier",
+  },
+  {
+    icon: VerticalShadesIcon,
+    label: "Branch",
+    href: "/branch",
   },
   {
     icon: Inventory2Outlined,
@@ -135,6 +142,11 @@ const Menuitems = [
       { label: "Stock Aging", href: "/reports/stock-aging" },
       { label: "Valuation Report", href: "/reports/valuation" },
     ],
+  },
+  {
+    icon: SecurityOutlined,
+    label: "Roles & Permissions",
+    href: "/roles-permissions",
   },
 ];
 

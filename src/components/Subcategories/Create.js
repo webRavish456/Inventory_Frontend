@@ -10,22 +10,16 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Typography,
 } from "@mui/material";
-import { getCategories } from '../../app/item/sharedData';
-
-const CreateSubcategory = ({ onClose, onSave }) => {
+const CreateSubcategory = ({ onClose, onSave, categories = [] }) => {
   const [formData, setFormData] = useState({
     categoryId: '',
     subCategoryName: '',
     description: ''
   });
 
-  const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
-
-  useEffect(() => {
-    setCategories(getCategories());
-  }, []);
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
@@ -80,7 +74,7 @@ const CreateSubcategory = ({ onClose, onSave }) => {
             >
               {categories.map((category) => (
                 <MenuItem key={category.id} value={category.id}>
-                  {category.categoryName}
+                  {category.categoryName || category.name}
                 </MenuItem>
               ))}
             </Select>

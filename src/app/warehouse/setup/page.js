@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Table,
@@ -14,102 +14,48 @@ import {
   InputAdornment,
   Pagination,
   Stack,
-  Button,
+  CircularProgress,
+  Alert,
+  Snackbar,
 } from "@mui/material";
-import { Search, Add, VisibilityOutlined, EditOutlined, DeleteOutlined, ArrowBack } from "@mui/icons-material";
+import { Search, Add, VisibilityOutlined, EditOutlined, DeleteOutlined } from "@mui/icons-material";
 import CreateSetup from '../../../components/Warehouse/Setup/Create';
 import EditSetup from '../../../components/Warehouse/Setup/Edit';
 import ViewSetup from '../../../components/Warehouse/Setup/View';
 import DeleteSetup from '../../../components/Warehouse/Setup/Delete';
 import CommonDialog from '../../../components/CommonDialog';
+import { fetchWarehouses, createWarehouse, updateWarehouse, deleteWarehouse } from '../../../lib/warehouseApi';
 
 const WarehouseSetup = () => {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage] = useState(10);
+  const [warehouseData, setWarehouseData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   
-  // CRUD operations state
   const [openData, setOpenData] = useState(false);
   const [viewShow, setViewShow] = useState(false);
   const [editShow, setEditShow] = useState(false);
   const [deleteShow, setDeleteShow] = useState(false);
   const [selectedWarehouse, setSelectedWarehouse] = useState(null);
 
-  // Multi-Warehouse Setup data
-  const [warehouseData, setWarehouseData] = useState([
-    {
-      id: "WH001",
-      warehouseId: "WH001",
-      warehouseName: "Mumbai Central Distribution Center",
-      shortCode: "MUM01",
-      addressLine1: "123 Industrial Zone",
-      addressLine2: "Near Mumbai Port",
-      city: "Mumbai",
-      state: "Maharashtra",
-      country: "India",
-      pincode: "400001",
-      geoLat: "19.0760",
-      geoLong: "72.8777",
-      contactPerson: "Rajesh Kumar",
-      contactPhone: "9876543210",
-      contactEmail: "rajesh@warehouse.com",
-      warehouseType: "Primary",
-      operatingHours: "24/7",
-      linkedTransportHub: "Mumbai Port (5km)",
-      specialConditions: "Temperature Controlled, Security Level High",
-      status: "Active",
-      establishedDate: "2024-01-15",
-      lastUpdated: "2024-09-20"
-    },
-    {
-      id: "WH002",
-      warehouseId: "WH002",
-      warehouseName: "Delhi Electronics Hub",
-      shortCode: "DEL01",
-      addressLine1: "456 Technology Hub",
-      addressLine2: "Delhi Industrial Area",
-      city: "Delhi",
-      state: "Delhi",
-      country: "India",
-      pincode: "110001",
-      geoLat: "28.6139",
-      geoLong: "77.2090",
-      contactPerson: "Priya Sharma",
-      contactPhone: "8765432109",
-      contactEmail: "priya@electronics.com",
-      warehouseType: "Secondary",
-      operatingHours: "16/7",
-      linkedTransportHub: "Delhi Airport (8km)",
-      specialConditions: "Electronics Storage, Anti-Static",
-      status: "Active",
-      establishedDate: "2024-02-10",
-      lastUpdated: "2024-09-18"
-    },
-    {
-      id: "WH003",
-      warehouseId: "WH003",
-      warehouseName: "Bangalore Cold Storage",
-      shortCode: "BLR01",
-      addressLine1: "789 Cold Storage Complex",
-      addressLine2: "Bangalore Industrial Zone",
-      city: "Bangalore",
-      state: "Karnataka",
-      country: "India",
-      pincode: "560001",
-      geoLat: "12.9716",
-      geoLong: "77.5946",
-      contactPerson: "Amit Patel",
-      contactPhone: "7654321098",
-      contactEmail: "amit@coldstorage.com",
-      warehouseType: "Cold Storage",
-      operatingHours: "12/7",
-      linkedTransportHub: "Bangalore Airport (12km)",
-      specialConditions: "Temperature Controlled (-18°C), Humidity Controlled",
-      status: "Active",
-      establishedDate: "2024-03-05",
-      lastUpdated: "2024-09-15"
+  const loadWarehouses = async () => {
+    try {
+      setLoading(true);
+      const data = await fetchWarehouses();
+      setWarehouseData(data || []);
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || 'Failed to load warehouses', severity: 'error' });
+      setWarehouseData([]);
+    } finally {
+      setLoading(false);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    loadWarehouses();
+  }, []);
 
   const filteredWarehouses = warehouseData.filter(warehouse =>
     warehouse.warehouseName.toLowerCase().includes(search.toLowerCase()) ||
@@ -169,33 +115,37 @@ const WarehouseSetup = () => {
     setDeleteShow(true);
   };
 
-  const handleCreate = (warehouseData) => {
-    const newWarehouse = {
-      ...warehouseData,
-      id: `WH${String(warehouseData.length + 1).padStart(3, '0')}`,
-      utilization: Math.round((warehouseData.currentStock / warehouseData.capacity) * 100),
-      lastUpdated: new Date().toISOString().split('T')[0]
-    };
-    setWarehouseData(prev => [...prev, newWarehouse]);
-    handleClose();
+  const handleCreate = async (formData) => {
+    try {
+      const created = await createWarehouse(formData);
+      await loadWarehouses();
+      handleClose();
+      setSnackbar({ open: true, message: 'Warehouse created successfully', severity: 'success' });
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || 'Failed to create warehouse', severity: 'error' });
+    }
   };
 
-  const handleUpdate = (warehouseData) => {
-    setWarehouseData(prev => prev.map(warehouse => 
-      warehouse.id === selectedWarehouse.id 
-        ? { 
-            ...warehouseData, 
-            utilization: Math.round((warehouseData.currentStock / warehouseData.capacity) * 100),
-            lastUpdated: new Date().toISOString().split('T')[0]
-          }
-        : warehouse
-    ));
-    handleClose();
+  const handleUpdate = async (formData) => {
+    try {
+      await updateWarehouse(selectedWarehouse.id, formData);
+      await loadWarehouses();
+      handleClose();
+      setSnackbar({ open: true, message: 'Warehouse updated successfully', severity: 'success' });
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || 'Failed to update warehouse', severity: 'error' });
+    }
   };
 
-  const handleDelete = () => {
-    setWarehouseData(prev => prev.filter(warehouse => warehouse.id !== selectedWarehouse.id));
-    handleClose();
+  const handleDelete = async () => {
+    try {
+      await deleteWarehouse(selectedWarehouse.id);
+      await loadWarehouses();
+      handleClose();
+      setSnackbar({ open: true, message: 'Warehouse deleted successfully', severity: 'success' });
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || 'Failed to delete warehouse', severity: 'error' });
+    }
   };
 
   const handleClose = () => {
@@ -208,6 +158,9 @@ const WarehouseSetup = () => {
 
   return (
     <div className="content-area">
+      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'top', horizontal: 'right' }}>
+        <Alert severity={snackbar.severity} onClose={() => setSnackbar(s => ({ ...s, open: false }))}>{snackbar.message}</Alert>
+      </Snackbar>
       
       {/* Search and Create Button */}
       <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "1rem", marginBottom: "1rem" }}>
@@ -252,7 +205,19 @@ const WarehouseSetup = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredWarehouses
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                    <CircularProgress />
+                  </TableCell>
+                </TableRow>
+              ) : filteredWarehouses.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                    <Typography color="text.secondary">No warehouses found</Typography>
+                  </TableCell>
+                </TableRow>
+              ) : filteredWarehouses
                 .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                 .map((warehouse, index) => (
                   <TableRow key={warehouse.id}>

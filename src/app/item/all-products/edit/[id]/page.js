@@ -25,10 +25,27 @@ import {
   Divider,
 } from "@mui/material";
 import { ArrowBack, Add, Delete, Edit } from "@mui/icons-material";
+import {
+  fetchItemByIdRaw,
+  updateItem,
+  fetchCategories,
+  fetchSubcategories,
+  fetchHsnSacCodes,
+  fetchBatchSerialRecords,
+  itemToFormData,
+} from '../../../../../lib/itemApi';
 
 const EditProduct = () => {
   const params = useParams();
-  // HSN Code to Tax Rate mapping
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [subcategories, setSubcategories] = useState([]);
+  const [hsnCodes, setHsnCodes] = useState([]);
+  const [batchOptions, setBatchOptions] = useState({ batchNumbers: [], serialNumbers: [] });
+
+  // HSN Code to Tax Rate mapping (fallback)
   const hsnTaxMapping = {
     '8517': 18, // Mobile phones, smartphones
     '8471': 18, // Laptops, computers
@@ -93,6 +110,7 @@ const EditProduct = () => {
     batchNumber: '',
     serialNumber: ''
   });
+  const [variantError, setVariantError] = useState(null);
 
   const [attributeForm, setAttributeForm] = useState({
     attributeName: '',
@@ -100,55 +118,84 @@ const EditProduct = () => {
   });
 
   useEffect(() => {
-    // In real app, fetch product data by ID from API
-    // For now, data is already initialized in useState
-  }, [params.id]);
+    let cancelled = false;
+    const id = params?.id;
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [item, cats, hsnList, batchList] = await Promise.all([
+          fetchItemByIdRaw(id),
+          fetchCategories().catch(() => []),
+          fetchHsnSacCodes().catch(() => []),
+          fetchBatchSerialRecords().catch(() => []),
+        ]);
+        if (cancelled) return;
+        const form = itemToFormData(item);
+        if (form) setFormData(form);
+        setCategories(cats);
+        setHsnCodes(hsnList || []);
+        const batches = batchList || [];
+        setBatchOptions({
+          batchNumbers: [...new Set(batches.map((b) => b.batchNumber).filter(Boolean))],
+          serialNumbers: [...new Set(batches.map((b) => b.serialNumber).filter(Boolean))],
+        });
+      } catch (e) {
+        if (!cancelled) setError(e?.message || 'Failed to load product');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [params?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const catId = formData.categoryId || categories.find((c) => c.categoryName === formData.category || c.name === formData.category)?.id;
+    if (catId) {
+      fetchSubcategories(catId).then((subs) => {
+        if (!cancelled) setSubcategories(subs);
+      }).catch(() => { if (!cancelled) setSubcategories([]); });
+    } else setSubcategories([]);
+    return () => { cancelled = true; };
+  }, [formData.category, formData.categoryId, categories]);
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-
-    // Auto-calculate tax rate when HSN code is entered
-    if (field === 'hsnCode' && value) {
-      const taxRate = hsnTaxMapping[value] || '';
-      if (taxRate) {
-        setFormData(prev => ({
-          ...prev,
-          [field]: value,
-          taxRate: taxRate
-        }));
+    setFormData(prev => {
+      const next = { ...prev, [field]: value };
+      if (field === 'category' || field === 'categoryId') {
+        const cat = categories.find(c => c.id === value || c.categoryName === value || c.name === value);
+        if (cat) {
+          next.categoryId = cat.id;
+          next.category = cat.categoryName || cat.name;
+          next.subCategory = '';
+          next.subcategoryId = '';
+        }
+      } else if (field === 'subCategory' || field === 'subcategoryId') {
+        const sub = subcategories.find(s => s.id === value || s.subCategoryName === value || s.name === value);
+        if (sub) {
+          next.subcategoryId = sub.id;
+          next.subCategory = sub.subCategoryName || sub.name;
+        }
+      } else if (field === 'hsnCode' && value) {
+        const taxRate = hsnTaxMapping[value] || '';
+        if (taxRate) next.taxRate = taxRate;
+      } else if (field === 'discountType') next.discountValue = '';
+      else if (field === 'discountValue' && value) {
+        const numValue = parseFloat(value);
+        if (prev.discountType === 'percentage' && numValue > 100) next.discountValue = '100';
+        else if (prev.discountType === 'flat' && prev.sellingPrice && numValue > parseFloat(prev.sellingPrice)) next.discountValue = prev.sellingPrice;
       }
-    }
-
-    // Reset discount value when discount type changes
-    if (field === 'discountType') {
-      setFormData(prev => ({
-        ...prev,
-        [field]: value,
-        discountValue: ''
-      }));
-    }
-
-    // Validate discount value
-    if (field === 'discountValue' && value) {
-      const numValue = parseFloat(value);
-      if (formData.discountType === 'percentage' && numValue > 100) {
-        setFormData(prev => ({
-          ...prev,
-          [field]: '100'
-        }));
-      } else if (formData.discountType === 'flat' && formData.sellingPrice && numValue > parseFloat(formData.sellingPrice)) {
-        setFormData(prev => ({
-          ...prev,
-          [field]: formData.sellingPrice
-        }));
-      }
-    }
+      return next;
+    });
   };
 
   const handleVariantInputChange = (field, value) => {
+    if (variantError && (field === 'variantType' || field === 'skuCode')) setVariantError(null);
     setVariantForm(prev => ({
       ...prev,
       [field]: value
@@ -173,27 +220,32 @@ const EditProduct = () => {
   };
 
   const addVariant = () => {
-    if (variantForm.variantType && variantForm.variantValue && variantForm.skuCode) {
-      const newVariant = {
-        id: Date.now().toString(),
-        ...variantForm
-      };
-      setFormData(prev => ({
-        ...prev,
-        variants: [...prev.variants, newVariant]
-      }));
-      setVariantForm({
-        variantType: '',
-        variantValue: '',
-        skuCode: '',
-        purchasePrice: '',
-        sellingPrice: '',
-        stock: '',
-        selectedAttributes: {},
-        batchNumber: '',
-        serialNumber: ''
-      });
+    const variantValue = variantForm.variantValue || variantForm.variantType;
+    if (!variantForm.variantType || !variantForm.skuCode) {
+      setVariantError("Please enter Variant Name and SKU to add a variant");
+      return;
     }
+    setVariantError(null);
+    const newVariant = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      ...variantForm,
+      variantValue: variantValue || variantForm.variantType
+    };
+    setFormData(prev => ({
+      ...prev,
+      variants: [...prev.variants, newVariant]
+    }));
+    setVariantForm({
+      variantType: '',
+      variantValue: '',
+      skuCode: '',
+      purchasePrice: '',
+      sellingPrice: '',
+      stock: '',
+      selectedAttributes: {},
+      batchNumber: '',
+      serialNumber: ''
+    });
   };
 
   const removeVariant = (variantId) => {
@@ -241,22 +293,46 @@ const EditProduct = () => {
     removeAttribute(attribute.id);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Updated Product Data:', formData);
-    // Here you would typically send data to API
-    alert('Product updated successfully!');
-    window.location.href = '/item/all-products';
+    const id = params?.id;
+    if (!id) return;
+    setError(null);
+    setSaving(true);
+    try {
+      await updateItem(id, formData);
+      window.location.href = '/item/all-products';
+    } catch (err) {
+      setError(err?.message || 'Failed to update product');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
     window.history.back();
   };
 
+  const hasAttribute = formData.attributes?.length > 0;
+  const hasVariant = formData.variants?.length > 0;
+  const shouldSkipValidation = hasAttribute || hasVariant;
+
+  if (loading) {
+    return (
+      <div className="content-area">
+        <Typography color="text.secondary">Loading product...</Typography>
+      </div>
+    );
+  }
+
   return (
     <div className="content-area">
-      
-      <form onSubmit={handleSubmit}>
+      {error && (
+        <Box sx={{ mb: 2, p: 1.5, bgcolor: "error.light", color: "error.contrastText", borderRadius: 1 }}>
+          {error}
+        </Box>
+      )}
+      <form onSubmit={handleSubmit} noValidate>
         <Grid container spacing={3}>
           {/* Basic Product Details */}
           <Grid size={{ xs: 12 }}>
@@ -279,25 +355,46 @@ const EditProduct = () => {
                     <FormControl fullWidth>
                       <InputLabel>Category *</InputLabel>
                       <Select
-                        value={formData.category}
+                        value={formData.category || ''}
                         onChange={(e) => handleInputChange('category', e.target.value)}
+                        label="Category *"
                         required
+                        displayEmpty
+                        MenuProps={{ PaperProps: { sx: { zIndex: 9999 } }, disableScrollLock: true }}
                       >
-                        <MenuItem value="Electronics">Electronics</MenuItem>
-                        <MenuItem value="Furniture">Furniture</MenuItem>
-                        <MenuItem value="Kitchenware">Kitchenware</MenuItem>
-                        <MenuItem value="Clothing">Clothing</MenuItem>
-                        <MenuItem value="Books">Books</MenuItem>
+                        <MenuItem value="">
+                          <em>Select category</em>
+                        </MenuItem>
+                        {categories.map((cat) => (
+                          <MenuItem key={cat.id} value={cat.categoryName || cat.name}>
+                            {cat.categoryName || cat.name}
+                          </MenuItem>
+                        ))}
                       </Select>
                     </FormControl>
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField
-                      fullWidth
-                      label="Sub Category"
-                      value={formData.subCategory}
-                      onChange={(e) => handleInputChange('subCategory', e.target.value)}
-                    />
+                    <FormControl fullWidth>
+                      <InputLabel>Sub Category *</InputLabel>
+                      <Select
+                        value={formData.subCategory || ''}
+                        onChange={(e) => handleInputChange('subCategory', e.target.value)}
+                        label="Sub Category *"
+                        required
+                        disabled={!formData.category}
+                        displayEmpty
+                        MenuProps={{ PaperProps: { sx: { zIndex: 9999 } }, disableScrollLock: true }}
+                      >
+                        <MenuItem value="">
+                          <em>{subcategories.length === 0 && formData.category ? 'No subcategories' : 'Select subcategory'}</em>
+                        </MenuItem>
+                        {subcategories.map((sub) => (
+                          <MenuItem key={sub.id} value={sub.subCategoryName || sub.name}>
+                            {sub.subCategoryName || sub.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <TextField
@@ -326,11 +423,12 @@ const EditProduct = () => {
                   <Grid size={{ xs: 12 }}>
                     <TextField
                       fullWidth
-                      label="Description"
+                      label={shouldSkipValidation ? "Description" : "Description *"}
                       multiline
                       rows={3}
                       value={formData.description}
                       onChange={(e) => handleInputChange('description', e.target.value)}
+                      required={!shouldSkipValidation}
                     />
                   </Grid>
                 </Grid>
@@ -349,21 +447,21 @@ const EditProduct = () => {
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <TextField
                       fullWidth
-                      label="Purchase Price *"
+                      label={shouldSkipValidation ? "Purchase Price" : "Purchase Price *"}
                       type="number"
                       value={formData.purchasePrice}
                       onChange={(e) => handleInputChange('purchasePrice', e.target.value)}
-                      required
+                      required={!shouldSkipValidation}
                     />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <TextField
                       fullWidth
-                      label="Selling Price *"
+                      label={shouldSkipValidation ? "Selling Price" : "Selling Price *"}
                       type="number"
                       value={formData.sellingPrice}
                       onChange={(e) => handleInputChange('sellingPrice', e.target.value)}
-                      required
+                      required={!shouldSkipValidation}
                     />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
@@ -397,14 +495,27 @@ const EditProduct = () => {
                     />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
-                    <TextField
-                      fullWidth
-                      label="HSN Code"
-                      value={formData.hsnCode}
-                      onChange={(e) => handleInputChange('hsnCode', e.target.value)}
-                      helperText="Tax rate will be automatically calculated based on HSN code"
-                      placeholder="e.g., 8517, 8471, 9401"
-                    />
+                    <FormControl fullWidth>
+                      <InputLabel>HSN Code</InputLabel>
+                      <Select
+                        value={formData.hsnCode}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const hsn = hsnCodes.find((h) => (h.hsnCode || h.code) === val);
+                          handleInputChange('hsnCode', val);
+                          if (hsn) handleInputChange('taxRate', hsn.taxRate ?? '');
+                        }}
+                        label="HSN Code"
+                        displayEmpty
+                      >
+                        <MenuItem value="">Select HSN code</MenuItem>
+                        {hsnCodes.map((h) => (
+                          <MenuItem key={h.id || h._id} value={h.hsnCode || h.code}>
+                            {h.hsnCode || h.code} ({h.taxRate}%)
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <TextField
@@ -440,11 +551,11 @@ const EditProduct = () => {
                   <Grid size={{ xs: 12, sm: 6 }}>
                     <TextField
                       fullWidth
-                      label="Stock *"
+                      label={shouldSkipValidation ? "Stock (optional)" : formData.variants?.length > 0 ? "Stock (optional)" : "Stock *"}
                       type="number"
                       value={formData.stock}
                       onChange={(e) => handleInputChange('stock', e.target.value)}
-                      required
+                      required={!shouldSkipValidation && !(formData.variants?.length > 0)}
                     />
                   </Grid>
                   <Grid size={{ xs: 12, sm: 6 }}>
@@ -468,13 +579,12 @@ const EditProduct = () => {
                         value={formData.batchNumber}
                         onChange={(e) => handleInputChange('batchNumber', e.target.value)}
                         label="Batch Number"
+                        displayEmpty
                       >
-                        <MenuItem value="BATCH001">BATCH001</MenuItem>
-                        <MenuItem value="BATCH002">BATCH002</MenuItem>
-                        <MenuItem value="BATCH003">BATCH003</MenuItem>
-                        <MenuItem value="B2024001">B2024001</MenuItem>
-                        <MenuItem value="B2024002">B2024002</MenuItem>
-                        <MenuItem value="B2024003">B2024003</MenuItem>
+                        <MenuItem value="">Select batch</MenuItem>
+                        {batchOptions.batchNumbers.map((bn) => (
+                          <MenuItem key={bn} value={bn}>{bn}</MenuItem>
+                        ))}
                       </Select>
                     </FormControl>
                   </Grid>
@@ -485,13 +595,12 @@ const EditProduct = () => {
                         value={formData.serialNumber}
                         onChange={(e) => handleInputChange('serialNumber', e.target.value)}
                         label="Serial Number"
+                        displayEmpty
                       >
-                        <MenuItem value="SN001">SN001</MenuItem>
-                        <MenuItem value="SN002">SN002</MenuItem>
-                        <MenuItem value="SN003">SN003</MenuItem>
-                        <MenuItem value="SER2024001">SER2024001</MenuItem>
-                        <MenuItem value="SER2024002">SER2024002</MenuItem>
-                        <MenuItem value="SER2024003">SER2024003</MenuItem>
+                        <MenuItem value="">Select serial</MenuItem>
+                        {batchOptions.serialNumbers.map((sn) => (
+                          <MenuItem key={sn} value={sn}>{sn}</MenuItem>
+                        ))}
                       </Select>
                     </FormControl>
                   </Grid>
@@ -519,27 +628,28 @@ const EditProduct = () => {
                       <Grid size={{ xs: 12, sm: 6 }}>
                         <TextField
                           fullWidth
-                          label="Attribute Name *"
+                          label={formData.attributes?.length >= 1 && formData.variants?.length >= 1 ? "Attribute Name" : "Attribute Name *"}
                           value={attributeForm.attributeName}
                           onChange={(e) => handleAttributeInputChange('attributeName', e.target.value)}
                           placeholder="e.g., Size, Color, Storage"
-                          required
+                          required={!(formData.attributes?.length >= 1 && formData.variants?.length >= 1)}
                         />
                       </Grid>
                       <Grid size={{ xs: 12, sm: 6 }}>
                         <TextField
                           fullWidth
-                          label="Attribute Values *"
+                          label={formData.attributes?.length >= 1 && formData.variants?.length >= 1 ? "Attribute Values" : "Attribute Values *"}
                           value={attributeForm.attributeValues}
                           onChange={(e) => handleAttributeInputChange('attributeValues', e.target.value)}
                           placeholder="e.g., S, M, L or Red, Blue, Green"
                           helperText="Separate multiple values with commas"
-                          required
+                          required={!(formData.attributes?.length >= 1 && formData.variants?.length >= 1)}
                         />
                       </Grid>
                       <Grid size={{ xs: 12 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                           <Button
+                            type="button"
                             variant="contained"
                             startIcon={<Add />}
                             onClick={addAttribute}
@@ -621,6 +731,11 @@ const EditProduct = () => {
               
               {/* Add Variant Form */}
               <Box sx={{ p: 2, mb: 3, backgroundColor: 'white', border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                    {variantError && (
+                      <Box sx={{ mb: 2, p: 1.5, bgcolor: "error.light", color: "error.contrastText", borderRadius: 1 }}>
+                        {variantError}
+                      </Box>
+                    )}
                     <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
                       Add New Variant
                     </Typography>
@@ -628,21 +743,21 @@ const EditProduct = () => {
                       <Grid size={{ xs: 12, sm: 6 }}>
                         <TextField
                           fullWidth
-                          label="Variant Name *"
+                          label={formData.attributes?.length >= 1 && formData.variants?.length >= 1 ? "Variant Name" : "Variant Name *"}
                           value={variantForm.variantType}
                           onChange={(e) => handleVariantInputChange('variantType', e.target.value)}
                           placeholder="e.g., iPhone 15 Pro Max 256GB Blue"
-                          required
+                          required={!(formData.attributes?.length >= 1 && formData.variants?.length >= 1)}
                         />
                       </Grid>
                       <Grid size={{ xs: 12, sm: 6 }}>
                         <TextField
                           fullWidth
-                          label="SKU *"
+                          label={formData.attributes?.length >= 1 && formData.variants?.length >= 1 ? "SKU" : "SKU *"}
                           value={variantForm.skuCode}
                           onChange={(e) => handleVariantInputChange('skuCode', e.target.value)}
                           placeholder="Unique SKU"
-                          required
+                          required={!(formData.attributes?.length >= 1 && formData.variants?.length >= 1)}
                         />
                       </Grid>
                       <Grid size={{ xs: 12, sm: 6 }}>
@@ -688,10 +803,14 @@ const EditProduct = () => {
                               <FormControl fullWidth>
                                 <InputLabel>{attribute.attributeName}</InputLabel>
                                 <Select
+                                  displayEmpty
                                   value={variantForm.selectedAttributes[attribute.attributeName] || ''}
                                   onChange={(e) => handleVariantAttributeChange(attribute.attributeName, e.target.value)}
                                   label={attribute.attributeName}
                                 >
+                                  <MenuItem value="">
+                                    <em>Select {attribute.attributeName}</em>
+                                  </MenuItem>
                                   {attribute.attributeValues.map((value) => (
                                     <MenuItem key={value} value={value}>
                                       {value}
@@ -706,26 +825,25 @@ const EditProduct = () => {
                       <Grid size={{ xs: 12, sm: 6 }}>
                         <TextField
                           fullWidth
-                          label="Batch Number *"
+                          label="Batch Number"
                           value={variantForm.batchNumber}
                           onChange={(e) => handleVariantInputChange('batchNumber', e.target.value)}
                           placeholder="e.g., BATCH001, B2024001"
-                          required
                         />
                       </Grid>
                       <Grid size={{ xs: 12, sm: 6 }}>
                         <TextField
                           fullWidth
-                          label="Serial Number *"
+                          label="Serial Number"
                           value={variantForm.serialNumber}
                           onChange={(e) => handleVariantInputChange('serialNumber', e.target.value)}
                           placeholder="e.g., SN001, SER2024001"
-                          required
                         />
                       </Grid>
                       <Grid size={{ xs: 12 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
                           <Button
+                            type="button"
                             variant="contained"
                             startIcon={<Add />}
                             onClick={addVariant}
@@ -819,9 +937,10 @@ const EditProduct = () => {
               <Button
                 type="submit"
                 variant="contained"
+                disabled={saving}
                 sx={{ minWidth: 120 }}
               >
-                Update Product
+                {saving ? 'Saving...' : 'Update Product'}
               </Button>
             </Box>
           </Grid>

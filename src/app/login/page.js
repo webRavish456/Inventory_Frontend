@@ -1,7 +1,6 @@
-"use client"
-import React from 'react'
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+"use client";
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Box,
   TextField,
@@ -11,36 +10,53 @@ import {
   InputAdornment,
   Grid,
   Card,
-  CardContent
-} from '@mui/material';
+  CardContent,
+  Alert,
+  CircularProgress,
+} from "@mui/material";
 import {
   Email,
   Lock,
   Visibility,
   VisibilityOff,
-  BusinessCenter
-} from '@mui/icons-material';
+  BusinessCenter,
+} from "@mui/icons-material";
+import { useAuth } from "../../context/AuthContext";
+import { loginAdmin } from "../../lib/api";
 
 export default function Login() {
   const router = useRouter();
-  const [form, setForm] = useState({
-    email: "",
-    password: ""
-  });
+  const { login: setAuth } = useAuth();
+  const [form, setForm] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const handleChange = (e) => {
-    setForm({...form, [e.target.name]: e.target.value});
+    setForm({ ...form, [e.target.name]: e.target.value });
+    setError("");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Simple validation
-    if (form.email && form.password) {
-      // Redirect to dashboard
-      router.push('/dashboard');
-    } else {
-      alert('Please fill in all fields');
+    if (!form.email?.trim() || !form.password) {
+      setError("Please fill in all fields");
+      return;
+    }
+    setError("");
+    setSubmitting(true);
+    try {
+      const data = await loginAdmin(form.email.trim(), form.password);
+      if (data.success && data.token && data.admin) {
+        setAuth(data.token, data.admin);
+        router.push("/dashboard");
+      } else {
+        setError(data.message || "Login failed");
+      }
+    } catch (err) {
+      setError(err.message || "Invalid credentials. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -101,10 +117,16 @@ export default function Login() {
               </Typography>
             </Box>
 
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>
+                {error}
+              </Alert>
+            )}
+
             {/* Login Form */}
             <Box component="form" onSubmit={handleSubmit} noValidate>
               <Grid container spacing={3}>
-                <Grid size={{xs:12}}>
+                <Grid size={{ xs: 12 }}>
                   <TextField
                     fullWidth
                     required
@@ -135,7 +157,7 @@ export default function Login() {
                   />
                 </Grid>
 
-                <Grid size={{xs:12}}>
+                <Grid size={{ xs: 12 }}>
                   <TextField
                     fullWidth
                     required
@@ -176,23 +198,28 @@ export default function Login() {
                   />
                 </Grid>
 
-                <Grid size={{xs:12}}>
+                <Grid size={{ xs: 12 }}>
                   <Button
                     type="submit"
                     fullWidth
                     variant="contained"
+                    disabled={submitting}
                     sx={{
                       height: 48,
-                      backgroundColor: '#1976d2',
-                      fontSize: '1rem',
+                      backgroundColor: "#1976d2",
+                      fontSize: "1rem",
                       fontWeight: 500,
-                      textTransform: 'none',
-                      '&:hover': {
-                        backgroundColor: '#1565c0',
+                      textTransform: "none",
+                      "&:hover": {
+                        backgroundColor: "#1565c0",
                       },
                     }}
                   >
-                    Sign In
+                    {submitting ? (
+                      <CircularProgress size={24} sx={{ color: "white" }} />
+                    ) : (
+                      "Sign In"
+                    )}
                   </Button>
                 </Grid>
               </Grid>

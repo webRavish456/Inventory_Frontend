@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Table,
@@ -14,6 +14,8 @@ import {
   InputAdornment,
   Pagination,
   Stack,
+  CircularProgress,
+  Alert,
 } from "@mui/material";
 import { Search, Add, VisibilityOutlined, EditOutlined, DeleteOutlined } from "@mui/icons-material";
 import CommonDialog from '../../components/CommonDialog';
@@ -21,6 +23,7 @@ import CreateSupplier from '../../components/supplier/Create';
 import EditSupplier from '../../components/supplier/Edit';
 import ViewSupplier from '../../components/supplier/View';
 import DeleteSupplier from '../../components/supplier/Delete';
+import { fetchSuppliers, createSupplier, updateSupplier, deleteSupplier, supplierFromApi } from '../../lib/supplierApi';
 
 const Supplier = () => {
   const [search, setSearch] = useState("");
@@ -31,55 +34,24 @@ const Supplier = () => {
   const [editShow, setEditShow] = useState(false);
   const [deleteShow, setDeleteShow] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
+  const [supplierData, setSupplierData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  // Simplified supplier data
-  const [supplierData, setSupplierData] = useState([
-    {
-      id: "SUP001",
-      supplierId: "SUP001",
-      supplierName: "Tech Solutions Pvt Ltd",
-      contactPerson: "Rajesh Kumar",
-      email: "rajesh@techsolutions.com",
-      phone: "9876543210",
-      city: "Mumbai",
-      state: "Maharashtra",
-      gstNumber: "27ABCDE1234F1Z5",
-      supplierType: "Electronics",
-      status: "Active"
-    },
-    {
-      id: "SUP002",
-      supplierId: "SUP002",
-      supplierName: "Furniture World",
-      contactPerson: "Priya Sharma",
-      email: "priya@furnitureworld.com",
-      phone: "8765432109",
-      city: "Delhi",
-      state: "Delhi",
-      gstNumber: "07FGHIJ5678K2L6",
-      supplierType: "Furniture",
-      status: "Active"
-    },
-    {
-      id: "SUP003",
-      supplierId: "SUP003",
-      supplierName: "Kitchen Essentials",
-      contactPerson: "Amit Patel",
-      email: "amit@kitchenessentials.com",
-      phone: "7654321098",
-      city: "Bangalore",
-      state: "Karnataka",
-      gstNumber: "29KLMNO9012P3M7",
-      supplierType: "Kitchenware",
-      status: "Active"
-    }
-  ]);
+  useEffect(() => {
+    fetchSuppliers()
+      .then(setSupplierData)
+      .catch((err) => setError(err.message || "Failed to load suppliers"))
+      .finally(() => setLoading(false));
+  }, []);
 
-  const filteredSuppliers = supplierData.filter(supplier =>
-    supplier.supplierName.toLowerCase().includes(search.toLowerCase()) ||
-    supplier.contactPerson.toLowerCase().includes(search.toLowerCase()) ||
-    supplier.email.toLowerCase().includes(search.toLowerCase()) ||
-    supplier.supplierType.toLowerCase().includes(search.toLowerCase())
+  const filteredSuppliers = (supplierData || []).filter(supplier =>
+    (supplier.supplierName || "").toLowerCase().includes(search.toLowerCase()) ||
+    (supplier.contactPerson || "").toLowerCase().includes(search.toLowerCase()) ||
+    (supplier.email || "").toLowerCase().includes(search.toLowerCase()) ||
+    (supplier.supplierType || "").toLowerCase().includes(search.toLowerCase()) ||
+    (supplier.companyName || "").toLowerCase().includes(search.toLowerCase())
   );
 
   const getStatusColor = (status) => {
@@ -87,6 +59,7 @@ const Supplier = () => {
       case "Active":
         return "hrms-badge-success";
       case "Inactive":
+      case "Blocked":
         return "hrms-badge-error";
       default:
         return "hrms-badge-neutral";
@@ -126,29 +99,37 @@ const Supplier = () => {
     setDeleteShow(true);
   };
 
-  const handleSaveSupplier = (formData) => {
-    if (editShow) {
-      setSupplierData(supplierData.map(supplier => 
-        supplier.id === selectedSupplier.id 
-          ? { ...supplier, ...formData, updatedDate: new Date().toLocaleDateString() }
-          : supplier
-      ));
-    } else {
-      const newSupplier = {
-        id: Date.now().toString(),
-        supplierId: `SUP${String(supplierData.length + 1).padStart(3, '0')}`,
-        ...formData,
-        createdDate: new Date().toLocaleDateString(),
-        updatedDate: new Date().toLocaleDateString()
-      };
-      setSupplierData([...supplierData, newSupplier]);
+  const handleSaveSupplier = async (formData) => {
+    setError("");
+    setSaving(true);
+    try {
+      if (editShow && selectedSupplier?.id) {
+        const updated = await updateSupplier(selectedSupplier.id, formData);
+        setSupplierData((prev) =>
+          prev.map((s) => (s.id === selectedSupplier.id ? supplierFromApi(updated) : s))
+        );
+      } else {
+        const created = await createSupplier(formData);
+        setSupplierData((prev) => [supplierFromApi(created), ...prev]);
+      }
+      handleClose();
+    } catch (err) {
+      setError(err.message || "Failed to save supplier");
+    } finally {
+      setSaving(false);
     }
-    handleClose();
   };
 
-  const handleDeleteConfirm = () => {
-    setSupplierData(supplierData.filter(s => s.id !== selectedSupplier.id));
-    handleClose();
+  const handleDeleteConfirm = async () => {
+    if (!selectedSupplier?.id) return;
+    setError("");
+    try {
+      await deleteSupplier(selectedSupplier.id);
+      setSupplierData((prev) => prev.filter((s) => s.id !== selectedSupplier.id));
+      handleClose();
+    } catch (err) {
+      setError(err.message || "Failed to delete supplier");
+    }
   };
 
   const handleClose = () => {
@@ -165,8 +146,21 @@ const Supplier = () => {
     setPage(newPage - 1);
   };
 
+  if (loading) {
+    return (
+      <div className="content-area" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
+        <CircularProgress />
+      </div>
+    );
+  }
+
   return (
     <div className="content-area">
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>
+          {error}
+        </Alert>
+      )}
       {/* Search and Create Button */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px', mb: 3 }}>
         <TextField
@@ -214,11 +208,11 @@ const Supplier = () => {
               {filteredSuppliers
                 .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                 .map((supplier, index) => (
-                  <TableRow key={supplier.id}>
+                  <TableRow key={supplier.id || supplier._id}>
                     <TableCell>{page * rowsPerPage + index + 1}</TableCell>
                     <TableCell>
                       <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#1976d2' }}>
-                        {supplier.supplierId}
+                        {supplier.supplierId || supplier.id}
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -306,6 +300,7 @@ const Supplier = () => {
             <CreateSupplier
               onClose={handleClose}
               onSave={handleSaveSupplier}
+              saving={saving}
             />
           ) : viewShow ? (
             <ViewSupplier
@@ -316,6 +311,7 @@ const Supplier = () => {
               supplierData={selectedSupplier}
               onClose={handleClose}
               onSave={handleSaveSupplier}
+              saving={saving}
             />
           ) : deleteShow ? (
             <DeleteSupplier

@@ -7,16 +7,17 @@ import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@mui/material';
+import { useAuth } from '../context/AuthContext';
 
 const Header = () => {
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const pathname=usePathname();
-
   const router=useRouter();
+  const { logout } = useAuth();
 
   const headerTitle=()=>{
-    if(pathname==='/Dashboard'){
+    if(pathname==='/dashboard' || pathname==='/Dashboard'){
       return 'Dashboard';
     }
     else if(pathname==='/branch'){
@@ -73,13 +74,19 @@ const Header = () => {
     else if(pathname==='/Users'){
       return 'User Management';
     }
+    else if(pathname==='/roles-permissions'){
+      return 'Roles & Permissions';
+    }
+    else if(pathname.startsWith('/roles-permissions/manage')){
+      return 'Manage permissions';
+    }
     else {
       return 'Inventory Management';
     }
    }
 
-   const handleLogout=()=>{
-     // Redirect to login
+   const handleLogout = () => {
+     logout();
      router.push('/login');
    }
 

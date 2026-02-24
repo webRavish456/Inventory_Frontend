@@ -1,7 +1,7 @@
 "use client";
 import { Button, Grid, Typography } from "@mui/material";
 
-const DeleteCustomer = ({ customerData, onClose, onDelete }) => {
+const DeleteCustomer = ({ customerData, onClose, onDelete, saving }) => {
   if (!customerData) return null;
 
   return (
@@ -15,6 +15,7 @@ const DeleteCustomer = ({ customerData, onClose, onDelete }) => {
         <Button 
           onClick={onClose} 
           variant="outlined" 
+          disabled={saving}
           sx={{ transform: 'none', textTransform: 'none' }}
         >
           Cancel
@@ -23,9 +24,10 @@ const DeleteCustomer = ({ customerData, onClose, onDelete }) => {
           onClick={onDelete} 
           variant="contained" 
           color="error"
+          disabled={saving}
           sx={{ transform: 'none', textTransform: 'none' }}
         >
-          Delete
+          {saving ? "Deleting..." : "Delete"}
         </Button>
       </Grid>
     </Grid>

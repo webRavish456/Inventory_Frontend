@@ -13,7 +13,7 @@ import {
   Typography,
 } from "@mui/material";
 
-const EditBatch = ({ batchData, onClose, onSave }) => {
+const EditBatch = ({ batchData, onClose, onSave, products = [], suppliers = [] }) => {
   const [formData, setFormData] = useState({
     productId: '',
     batchNumber: '',
@@ -27,32 +27,16 @@ const EditBatch = ({ batchData, onClose, onSave }) => {
 
   const [errors, setErrors] = useState({});
 
-  // Sample products for dropdown
-  const products = [
-    { id: 'PROD001', name: 'Samsung Galaxy S24' },
-    { id: 'PROD002', name: 'Dell Inspiron 15' },
-    { id: 'PROD003', name: 'Office Chair' },
-    { id: 'PROD004', name: 'Coffee Mug' }
-  ];
-
-  // Sample suppliers for dropdown
-  const suppliers = [
-    { id: 'SUP001', name: 'Samsung India' },
-    { id: 'SUP002', name: 'Dell Technologies' },
-    { id: 'SUP003', name: 'Office Furniture Co.' },
-    { id: 'SUP004', name: 'Kitchen Essentials' }
-  ];
-
   useEffect(() => {
     if (batchData) {
       setFormData({
-        productId: batchData.productId || '',
+        productId: batchData.productId || batchData.itemId || '',
         batchNumber: batchData.batchNumber || '',
         serialNumber: batchData.serialNumber || '',
-        quantity: batchData.quantity || '',
+        quantity: batchData.quantity != null ? batchData.quantity : (batchData.totalQuantity != null ? batchData.totalQuantity : ''),
         expiryDate: batchData.expiryDate || '',
-        manufacturingDate: batchData.manufacturingDate || '',
-        supplier: batchData.supplier || '',
+        manufacturingDate: batchData.manufacturingDate || batchData.purchaseDate || '',
+        supplier: batchData.supplierId || batchData.supplier || '',
         status: batchData.status || 'Active'
       });
     }
@@ -76,8 +60,8 @@ const EditBatch = ({ batchData, onClose, onSave }) => {
     const newErrors = {};
     
     if (!formData.productId) newErrors.productId = 'Product is required';
-    if (!formData.batchNumber.trim()) newErrors.batchNumber = 'Batch number is required';
-    if (!formData.quantity.trim()) newErrors.quantity = 'Quantity is required';
+    if (!String(formData.batchNumber || '').trim()) newErrors.batchNumber = 'Batch number is required';
+    if (formData.quantity === '' || formData.quantity == null || (String(formData.quantity).trim() === '')) newErrors.quantity = 'Quantity is required';
     if (!formData.manufacturingDate) newErrors.manufacturingDate = 'Manufacturing date is required';
 
     setErrors(newErrors);
@@ -86,12 +70,13 @@ const EditBatch = ({ batchData, onClose, onSave }) => {
 
   const handleSave = () => {
     if (validateForm()) {
-      const updatedBatch = {
+      const payload = {
         ...batchData,
         ...formData,
-        lastUpdated: new Date().toISOString().split('T')[0]
+        productId: formData.productId,
+        supplierId: formData.supplier || undefined,
       };
-      onSave(updatedBatch);
+      onSave(payload);
       onClose();
     }
   };
@@ -145,7 +130,7 @@ const EditBatch = ({ batchData, onClose, onSave }) => {
             fullWidth
             label="Quantity"
             type="number"
-            value={formData.quantity}
+            value={formData.quantity !== '' && formData.quantity != null ? formData.quantity : ''}
             onChange={(e) => handleInputChange('quantity', e.target.value)}
             error={!!errors.quantity}
             helperText={errors.quantity}

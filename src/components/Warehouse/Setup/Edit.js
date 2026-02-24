@@ -61,9 +61,10 @@ const EditSetup = ({ warehouse, handleUpdate, handleClose }) => {
     if (warehouse) {
       setFormData({
         warehouseName: warehouse.warehouseName || '',
+        shortCode: warehouse.shortCode || warehouse.code || '',
         warehouseType: warehouse.warehouseType || 'Primary',
-        location: warehouse.city || '',
-        address: warehouse.addressLine1 || '',
+        location: warehouse.city || warehouse.location || '',
+        address: warehouse.addressLine1 || warehouse.address || '',
         city: warehouse.city || '',
         state: warehouse.state || '',
         pincode: warehouse.pincode || '',

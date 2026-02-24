@@ -14,7 +14,7 @@ import {
   Divider,
   Alert,
 } from "@mui/material";
-const CreateCapacity = ({ handleCreate, handleClose }) => {
+const CreateCapacity = ({ warehouses = [], handleCreate, handleClose }) => {
   const [formData, setFormData] = useState({
     warehouseName: '',
     totalZonesInWarehouse: '',
@@ -90,11 +90,11 @@ const CreateCapacity = ({ handleCreate, handleClose }) => {
       const utilizationPercent = formData.availableCapacityVolume ? 
         Math.round(((formData.totalCapacityVolume - formData.availableCapacityVolume) / formData.totalCapacityVolume) * 100) : 0;
       
+      const wh = warehouses.find(w => (w.warehouseName || w.name) === formData.warehouseName);
+      const warehouseId = wh?.id || wh?.warehouseId;
       const newCapacity = {
         ...formData,
-        id: `CAP${String(Date.now()).slice(-3)}`,
-        capacityId: `CAP${String(Date.now()).slice(-3)}`,
-        warehouseId: `WH${String(Date.now()).slice(-3)}`,
+        warehouseId,
         utilizationPercent: utilizationPercent,
         zoneData: zoneData,
         lastUpdated: new Date().toISOString().split('T')[0]
@@ -118,11 +118,14 @@ const CreateCapacity = ({ handleCreate, handleClose }) => {
               error={!!errors.warehouseName}
               required
             >
-              <MenuItem value="Mumbai Central Distribution Center">Mumbai Central Distribution Center</MenuItem>
-              <MenuItem value="Delhi Electronics Hub">Delhi Electronics Hub</MenuItem>
-              <MenuItem value="Bangalore Cold Storage">Bangalore Cold Storage</MenuItem>
-              <MenuItem value="Chennai Logistics Center">Chennai Logistics Center</MenuItem>
-              <MenuItem value="Kolkata Distribution Hub">Kolkata Distribution Hub</MenuItem>
+              <MenuItem value="">
+                <em>Select warehouse</em>
+              </MenuItem>
+              {(warehouses || []).map((w) => (
+                <MenuItem key={w.id || w.warehouseId} value={w.warehouseName || w.name}>
+                  {w.warehouseName || w.name}
+                </MenuItem>
+              ))}
             </Select>
             {errors.warehouseName && (
               <Typography variant="caption" color="error" sx={{ mt: 0.5, ml: 1.75 }}>

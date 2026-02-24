@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Table,
@@ -14,105 +14,51 @@ import {
   InputAdornment,
   Pagination,
   Stack,
-  Button,
+  CircularProgress,
+  Alert,
+  Snackbar,
 } from "@mui/material";
-import { Search, Add, VisibilityOutlined, EditOutlined, DeleteOutlined, ArrowBack } from "@mui/icons-material";
+import { Search, Add, VisibilityOutlined, EditOutlined, DeleteOutlined } from "@mui/icons-material";
 import CreateBinRack from '../../../components/Warehouse/BinRack/Create';
 import EditBinRack from '../../../components/Warehouse/BinRack/Edit';
 import ViewBinRack from '../../../components/Warehouse/BinRack/View';
 import DeleteBinRack from '../../../components/Warehouse/BinRack/Delete';
 import CommonDialog from '../../../components/CommonDialog';
+import { fetchWarehouses, fetchBinRacks, createBinRack, updateBinRack, deleteBinRack } from '../../../lib/warehouseApi';
 
 const BinRackManagement = () => {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage] = useState(10);
+  const [binRackData, setBinRackData] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   
-  // CRUD operations state
   const [openData, setOpenData] = useState(false);
   const [viewShow, setViewShow] = useState(false);
   const [editShow, setEditShow] = useState(false);
   const [deleteShow, setDeleteShow] = useState(false);
   const [selectedBinRack, setSelectedBinRack] = useState(null);
 
-  // Bin & Rack Management data
-  const [binRackData, setBinRackData] = useState([
-    {
-      id: "BR001",
-      binId: "BIN001",
-      rackId: "RACK001",
-      warehouseId: "WH001",
-      warehouseName: "Mumbai Central Distribution Center",
-      zone: "Zone A",
-      aisle: "A",
-      row: "1",
-      level: "1",
-      position: "1",
-      binType: "Pallet Bin",
-      binCapacityWeight: 2000, // max kg
-      binCapacityVolume: 2.5, // max m³
-      binCapacityUnits: 10, // max SKUs/pallets
-      currentOccupancyWeight: 1500, // kg
-      currentOccupancyVolume: 1.8, // m³
-      skuId: "SKU001",
-      emptyFullStatus: "Partially Filled",
-      pickPutawayPriority: "FIFO",
-      barcodeRfidTag: "RFID-A-1-1",
-      specialHandling: "Temperature Controlled",
-      status: "Active",
-      lastUpdated: "2024-09-20"
-    },
-    {
-      id: "BR002",
-      binId: "BIN002",
-      rackId: "RACK002",
-      warehouseId: "WH002",
-      warehouseName: "Delhi Electronics Hub",
-      zone: "Zone B",
-      aisle: "B",
-      row: "2",
-      level: "1",
-      position: "1",
-      binType: "Shelf Bin",
-      binCapacityWeight: 500, // max kg
-      binCapacityVolume: 0.8, // max m³
-      binCapacityUnits: 25, // max SKUs/pallets
-      currentOccupancyWeight: 320, // kg
-      currentOccupancyVolume: 0.5, // m³
-      skuId: "SKU002",
-      emptyFullStatus: "Partially Filled",
-      pickPutawayPriority: "FEFO",
-      barcodeRfidTag: "RFID-B-2-1",
-      specialHandling: "Anti-Static",
-      status: "Active",
-      lastUpdated: "2024-09-18"
-    },
-    {
-      id: "BR003",
-      binId: "BIN003",
-      rackId: "RACK003",
-      warehouseId: "WH003",
-      warehouseName: "Bangalore Cold Storage",
-      zone: "Zone C",
-      aisle: "C",
-      row: "3",
-      level: "1",
-      position: "1",
-      binType: "Bulk Bin",
-      binCapacityWeight: 3000, // max kg
-      binCapacityVolume: 4.0, // max m³
-      binCapacityUnits: 5, // max SKUs/pallets
-      currentOccupancyWeight: 1800, // kg
-      currentOccupancyVolume: 2.4, // m³
-      skuId: "SKU003",
-      emptyFullStatus: "Partially Filled",
-      pickPutawayPriority: "LIFO",
-      barcodeRfidTag: "RFID-C-3-1",
-      specialHandling: "Cold Storage (-18°C)",
-      status: "Active",
-      lastUpdated: "2024-09-15"
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [bins, whs] = await Promise.all([fetchBinRacks(), fetchWarehouses()]);
+      setBinRackData(bins || []);
+      setWarehouses(whs || []);
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || 'Failed to load data', severity: 'error' });
+      setBinRackData([]);
+      setWarehouses([]);
+    } finally {
+      setLoading(false);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const filteredBinRacks = binRackData.filter(binRack =>
     binRack.warehouseName.toLowerCase().includes(search.toLowerCase()) ||
@@ -164,35 +110,43 @@ const BinRackManagement = () => {
     setDeleteShow(true);
   };
 
-  const handleSaveBinRack = (binRackData) => {
-    if (selectedBinRack) {
-      // Edit mode
-      setBinRackData(prev => prev.map(binRack => 
-        binRack.id === selectedBinRack.id 
-          ? { 
-              ...binRackData, 
-              utilization: Math.round((binRackData.currentStock / binRackData.capacity) * 100)
-            }
-          : binRack
-      ));
-      setEditShow(false);
-    } else {
-      // Create mode
-      const newBinRack = {
-        ...binRackData,
-        id: `BR${String(binRackData.length + 1).padStart(3, '0')}`,
-        utilization: Math.round((binRackData.currentStock / binRackData.capacity) * 100)
-      };
-      setBinRackData(prev => [...prev, newBinRack]);
-      setOpenData(false);
-    }
-    setSelectedBinRack(null);
+  const getWarehouseIdFromName = (name) => {
+    const w = warehouses.find(x => (x.warehouseName || x.name) === name);
+    return w?.id || w?.warehouseId;
   };
 
-  const handleDeleteConfirm = (binRackId) => {
-    setBinRackData(prev => prev.filter(binRack => binRack.id !== binRackId));
-    setDeleteShow(false);
-    setSelectedBinRack(null);
+  const handleSaveBinRack = async (formData) => {
+    try {
+      const warehouseId = formData.warehouseId || getWarehouseIdFromName(formData.warehouseName);
+      if (!warehouseId) {
+        setSnackbar({ open: true, message: 'Please select a warehouse', severity: 'error' });
+        return;
+      }
+      if (selectedBinRack) {
+        await updateBinRack(selectedBinRack.id, formData, warehouseId);
+        setSnackbar({ open: true, message: 'Bin/Rack updated successfully', severity: 'success' });
+      } else {
+        await createBinRack(formData, warehouseId);
+        setSnackbar({ open: true, message: 'Bin/Rack created successfully', severity: 'success' });
+      }
+      await loadData();
+      handleClose();
+      setSelectedBinRack(null);
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || 'Failed to save bin/rack', severity: 'error' });
+    }
+  };
+
+  const handleDeleteConfirm = async (binRackId) => {
+    try {
+      await deleteBinRack(binRackId);
+      await loadData();
+      setDeleteShow(false);
+      setSelectedBinRack(null);
+      setSnackbar({ open: true, message: 'Bin/Rack deleted successfully', severity: 'success' });
+    } catch (err) {
+      setSnackbar({ open: true, message: err.message || 'Failed to delete bin/rack', severity: 'error' });
+    }
   };
 
   const handleClose = () => {
@@ -207,6 +161,9 @@ const BinRackManagement = () => {
 
   return (
     <div className="content-area">
+      <Snackbar open={snackbar.open} autoHideDuration={4000} onClose={() => setSnackbar(s => ({ ...s, open: false }))} anchorOrigin={{ vertical: 'top', horizontal: 'right' }}>
+        <Alert severity={snackbar.severity} onClose={() => setSnackbar(s => ({ ...s, open: false }))}>{snackbar.message}</Alert>
+      </Snackbar>
       
       {/* Search and Create Button */}
       <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "1rem", marginBottom: "1rem" }}>
@@ -251,7 +208,19 @@ const BinRackManagement = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredBinRacks
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                    <CircularProgress />
+                  </TableCell>
+                </TableRow>
+              ) : filteredBinRacks.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} align="center" sx={{ py: 4 }}>
+                    <Typography color="text.secondary">No bins/racks found</Typography>
+                  </TableCell>
+                </TableRow>
+              ) : filteredBinRacks
                 .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                 .map((binRack, index) => (
                   <TableRow key={binRack.id}>
@@ -343,6 +312,7 @@ const BinRackManagement = () => {
         dialogContent={
           openData ? (
             <CreateBinRack
+              warehouses={warehouses}
               onClose={handleClose}
               onSave={handleSaveBinRack}
             />
@@ -353,8 +323,9 @@ const BinRackManagement = () => {
               onEdit={handleEditBinRack}
               onDelete={handleDeleteBinRack}
             />
-          ) : editShow ? (
+          ) :           editShow ? (
             <EditBinRack
+              warehouses={warehouses}
               binRackData={selectedBinRack}
               onClose={handleClose}
               onSave={handleSaveBinRack}

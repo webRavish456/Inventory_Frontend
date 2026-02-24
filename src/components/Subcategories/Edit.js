@@ -12,9 +12,7 @@ import {
   MenuItem,
   Typography,
 } from "@mui/material";
-import { getCategories } from '../../app/item/sharedData';
-
-const EditSubcategory = ({ subcategoryData, onClose, onSave }) => {
+const EditSubcategory = ({ subcategoryData, onClose, onSave, categories = [] }) => {
   const [formData, setFormData] = useState({
     categoryId: '',
     subCategoryName: '',
@@ -22,12 +20,7 @@ const EditSubcategory = ({ subcategoryData, onClose, onSave }) => {
     status: 'Active'
   });
 
-  const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
-
-  useEffect(() => {
-    setCategories(getCategories());
-  }, []);
 
   useEffect(() => {
     if (subcategoryData) {
@@ -91,7 +84,7 @@ const EditSubcategory = ({ subcategoryData, onClose, onSave }) => {
             >
               {categories.map((category) => (
                 <MenuItem key={category.id} value={category.id}>
-                  {category.categoryName}
+                  {category.categoryName || category.name}
                 </MenuItem>
               ))}
             </Select>

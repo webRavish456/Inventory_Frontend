@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Table,
@@ -21,6 +21,7 @@ import CreateCustomer from '../../components/Customer Management/Create';
 import EditCustomer from '../../components/Customer Management/Edit';
 import ViewCustomer from '../../components/Customer Management/View';
 import DeleteCustomer from '../../components/Customer Management/Delete';
+import { fetchCustomers, createCustomer, updateCustomer, deleteCustomer, customerFromApi } from '../../lib/customerApi';
 
 const Customer = () => {
   const [search, setSearch] = useState("");
@@ -31,52 +32,27 @@ const Customer = () => {
   const [editShow, setEditShow] = useState(false);
   const [deleteShow, setDeleteShow] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [customerData, setCustomerData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
 
-  // Simplified customer data
-  const [customerData, setCustomerData] = useState([
-    {
-      id: "CUST001",
-      customerId: "CUST001",
-      customerName: "Rajesh Kumar",
-      email: "rajesh.kumar@gmail.com",
-      phone: "9876543210",
-      address: "123 Main Street, Andheri West",
-      city: "Mumbai",
-      state: "Maharashtra",
-      pincode: "400001",
-      gstNumber: "27ABCDE1234F1Z5",
-      customerType: "Regular",
-      status: "Active"
-    },
-    {
-      id: "CUST002",
-      customerId: "CUST002",
-      customerName: "Priya Sharma",
-      email: "priya.sharma@yahoo.com",
-      phone: "8765432109",
-      address: "456 Park Avenue, Connaught Place",
-      city: "Delhi",
-      state: "Delhi",
-      pincode: "110001",
-      gstNumber: "07FGHIJ5678K2L6",
-      customerType: "Premium",
-      status: "Active"
-    },
-    {
-      id: "CUST003",
-      customerId: "CUST003",
-      customerName: "Amit Patel",
-      email: "amit.patel@hotmail.com",
-      phone: "7654321098",
-      address: "789 Commercial Street, MG Road",
-      city: "Bangalore",
-      state: "Karnataka",
-      pincode: "560001",
-      gstNumber: "29KLMNO9012P3M7",
-      customerType: "VIP",
-      status: "Active"
-    }
-  ]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const list = await fetchCustomers();
+        if (!cancelled) setCustomerData(list);
+      } catch (e) {
+        if (!cancelled) setError(e.message || "Failed to load customers");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const filteredCustomers = customerData.filter(customer =>
     customer.customerName.toLowerCase().includes(search.toLowerCase()) ||
@@ -90,6 +66,7 @@ const Customer = () => {
       case "Active":
         return "hrms-badge-success";
       case "Inactive":
+      case "Blocked":
         return "hrms-badge-error";
       default:
         return "hrms-badge-neutral";
@@ -98,11 +75,12 @@ const Customer = () => {
 
   const getCustomerTypeColor = (type) => {
     switch (type) {
-      case "VIP":
+      case "Corporate":
         return "hrms-badge-primary";
-      case "Premium":
+      case "Wholesale":
         return "hrms-badge-success";
-      case "Regular":
+      case "Retail":
+      case "Individual":
         return "hrms-badge-neutral";
       default:
         return "hrms-badge-neutral";
@@ -129,29 +107,40 @@ const Customer = () => {
     setDeleteShow(true);
   };
 
-  const handleSaveCustomer = (formData) => {
-    if (editShow) {
-      setCustomerData(customerData.map(customer => 
-        customer.id === selectedCustomer.id 
-          ? { ...customer, ...formData, updatedDate: new Date().toLocaleDateString() }
-          : customer
-      ));
-    } else {
-      const newCustomer = {
-        id: Date.now().toString(),
-        customerId: `CUST${String(customerData.length + 1).padStart(3, '0')}`,
-        ...formData,
-        createdDate: new Date().toLocaleDateString(),
-        updatedDate: new Date().toLocaleDateString()
-      };
-      setCustomerData([...customerData, newCustomer]);
+  const handleSaveCustomer = async (formData) => {
+    setSaving(true);
+    setError(null);
+    try {
+      if (editShow && selectedCustomer?.id) {
+        const updated = await updateCustomer(selectedCustomer.id, formData);
+        setCustomerData((prev) =>
+          prev.map((c) => (c.id === selectedCustomer.id ? customerFromApi(updated) : c))
+        );
+      } else {
+        const created = await createCustomer(formData);
+        setCustomerData((prev) => [customerFromApi(created), ...prev]);
+      }
+      handleClose();
+    } catch (e) {
+      setError(e.message || "Failed to save customer");
+    } finally {
+      setSaving(false);
     }
-    handleClose();
   };
 
-  const handleDeleteConfirm = () => {
-    setCustomerData(customerData.filter(c => c.id !== selectedCustomer.id));
-    handleClose();
+  const handleDeleteConfirm = async () => {
+    if (!selectedCustomer?.id) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await deleteCustomer(selectedCustomer.id);
+      setCustomerData((prev) => prev.filter((c) => c.id !== selectedCustomer.id));
+      handleClose();
+    } catch (e) {
+      setError(e.message || "Failed to delete customer");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleClose = () => {
@@ -168,8 +157,21 @@ const Customer = () => {
     setPage(newPage - 1);
   };
 
+  if (loading) {
+    return (
+      <div className="content-area">
+        <Typography color="text.secondary">Loading customers...</Typography>
+      </div>
+    );
+  }
+
   return (
     <div className="content-area">
+      {error && (
+        <Box sx={{ mb: 2, p: 1.5, bgcolor: "error.light", color: "error.contrastText", borderRadius: 1 }}>
+          {error}
+        </Box>
+      )}
       {/* Search and Create Button */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px', mb: 3 }}>
         <TextField
@@ -307,6 +309,7 @@ const Customer = () => {
             <CreateCustomer
               onClose={handleClose}
               onSave={handleSaveCustomer}
+              saving={saving}
             />
           ) : viewShow ? (
             <ViewCustomer
@@ -317,12 +320,14 @@ const Customer = () => {
               customerData={selectedCustomer}
               onClose={handleClose}
               onSave={handleSaveCustomer}
+              saving={saving}
             />
           ) : deleteShow ? (
             <DeleteCustomer
               customerData={selectedCustomer}
               onClose={handleClose}
               onDelete={handleDeleteConfirm}
+              saving={saving}
             />
           ) : null
         }

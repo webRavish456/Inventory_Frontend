@@ -44,10 +44,10 @@ const DeleteBinRack = ({ onClose, binRackData, onConfirm }) => {
             <strong>Zone:</strong> {binRackData?.zone || 'N/A'}
           </Typography>
           <Typography variant="body1" sx={{ mb: 1 }}>
-            <strong>Rack Number:</strong> {binRackData?.rackNumber || 'N/A'}
+            <strong>Rack Number:</strong> {binRackData?.rackNumber || binRackData?.binRackNumber || 'N/A'}
           </Typography>
           <Typography variant="body1" sx={{ mb: 1 }}>
-            <strong>Bin Number:</strong> {binRackData?.binNumber || 'N/A'}
+            <strong>Bin Number:</strong> {binRackData?.binId || binRackData?.binNumber || 'N/A'}
           </Typography>
           <Typography variant="body1" sx={{ mb: 1 }}>
             <strong>Location Code:</strong> {binRackData?.location || 'N/A'}

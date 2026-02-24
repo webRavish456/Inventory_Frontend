@@ -8,6 +8,7 @@ const ViewCustomer = ({ customerData }) => {
       case "Active":
         return "success";
       case "Inactive":
+      case "Blocked":
         return "error";
       default:
         return "default";
@@ -16,11 +17,13 @@ const ViewCustomer = ({ customerData }) => {
 
   const getCustomerTypeColor = (type) => {
     switch (type) {
-      case "VIP":
+      case "Corporate":
         return "primary";
-      case "Premium":
+      case "Wholesale":
         return "success";
-      case "Regular":
+      case "Retail":
+        return "default";
+      case "Individual":
         return "default";
       default:
         return "default";
@@ -54,6 +57,14 @@ const ViewCustomer = ({ customerData }) => {
         </Typography>
         <Typography variant="body1" sx={{ fontWeight: 500 }}>
           {customerData.customerName}
+        </Typography>
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, color: '#666', mb: 0.5 }}>
+          Company Name
+        </Typography>
+        <Typography variant="body1" sx={{ fontWeight: 500 }}>
+          {customerData.companyName || "—"}
         </Typography>
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>
@@ -109,7 +120,31 @@ const ViewCustomer = ({ customerData }) => {
           GST Number
         </Typography>
         <Typography variant="body1" sx={{ fontWeight: 500, fontFamily: 'monospace' }}>
-          {customerData.gstNumber}
+          {customerData.gstNumber || "—"}
+        </Typography>
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, color: '#666', mb: 0.5 }}>
+          PAN Number
+        </Typography>
+        <Typography variant="body1" sx={{ fontWeight: 500, fontFamily: 'monospace' }}>
+          {customerData.panNumber || "—"}
+        </Typography>
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, color: '#666', mb: 0.5 }}>
+          Credit Limit
+        </Typography>
+        <Typography variant="body1" sx={{ fontWeight: 500 }}>
+          {customerData.creditLimit != null ? customerData.creditLimit : "—"}
+        </Typography>
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, color: '#666', mb: 0.5 }}>
+          Payment Terms
+        </Typography>
+        <Typography variant="body1" sx={{ fontWeight: 500 }}>
+          {customerData.paymentTerms || "—"}
         </Typography>
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>
@@ -122,6 +157,22 @@ const ViewCustomer = ({ customerData }) => {
           size="small"
           sx={{ fontWeight: 500 }}
         />
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, color: '#666', mb: 0.5 }}>
+          Total Orders
+        </Typography>
+        <Typography variant="body1" sx={{ fontWeight: 500 }}>
+          {customerData.totalOrders != null ? customerData.totalOrders : "—"}
+        </Typography>
+      </Grid>
+      <Grid size={{ xs: 12, md: 6 }}>
+        <Typography variant="body2" sx={{ fontWeight: 600, color: '#666', mb: 0.5 }}>
+          Total Amount
+        </Typography>
+        <Typography variant="body1" sx={{ fontWeight: 500 }}>
+          {customerData.totalAmount != null ? customerData.totalAmount : "—"}
+        </Typography>
       </Grid>
     </Grid>
   );

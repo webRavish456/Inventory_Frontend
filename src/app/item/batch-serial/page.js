@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -14,6 +14,8 @@ import {
   IconButton,
   Pagination,
   Stack,
+  CircularProgress,
+  Alert,
 } from "@mui/material";
 import { Search, Add, VisibilityOutlined, EditOutlined, DeleteOutlined } from "@mui/icons-material";
 import CommonDialog from '../../../components/CommonDialog';
@@ -21,6 +23,14 @@ import CreateBatch from '../../../components/BatchTracking/Create';
 import EditBatch from '../../../components/BatchTracking/Edit';
 import ViewBatch from '../../../components/BatchTracking/View';
 import DeleteBatch from '../../../components/BatchTracking/Delete';
+import {
+  fetchBatchSerialRecords,
+  createBatchSerialRecord,
+  updateBatchSerialRecord,
+  deleteBatchSerialRecord,
+} from '@/lib/itemApi';
+import { fetchItems } from '@/lib/itemApi';
+import { fetchSuppliers } from '@/lib/supplierApi';
 
 const BatchSerialTracking = () => {
   const [search, setSearch] = useState("");
@@ -31,72 +41,40 @@ const BatchSerialTracking = () => {
   const [editShow, setEditShow] = useState(false);
   const [deleteShow, setDeleteShow] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState(null);
+  const [batchData, setBatchData] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Sample products for dropdown
-  const products = [
-    { id: 'PROD001', name: 'Samsung Galaxy S24' },
-    { id: 'PROD002', name: 'Dell Inspiron 15' },
-    { id: 'PROD003', name: 'Office Chair' },
-    { id: 'PROD004', name: 'Coffee Mug' }
-  ];
-
-  // Sample batch/serial data
-  const [batchData, setBatchData] = useState([
-    {
-      id: 'BATCH001',
-      productId: 'PROD001',
-      productName: 'Samsung Galaxy S24',
-      batchNumber: 'BATCH-2024-001',
-      serialNumber: 'SN001-SN025',
-      quantity: 25,
-      expiryDate: '2025-12-31',
-      manufacturingDate: '2024-01-15',
-      supplier: 'Samsung India',
-      status: 'Active'
-    },
-    {
-      id: 'BATCH002',
-      productId: 'PROD002',
-      productName: 'Dell Inspiron 15',
-      batchNumber: 'BATCH-2024-002',
-      serialNumber: 'SN026-SN040',
-      quantity: 15,
-      expiryDate: '2026-06-30',
-      manufacturingDate: '2024-02-10',
-      supplier: 'Dell Technologies',
-      status: 'Active'
-    },
-    {
-      id: 'BATCH003',
-      productId: 'PROD003',
-      productName: 'Office Chair',
-      batchNumber: 'BATCH-2024-003',
-      serialNumber: 'SN041-SN048',
-      quantity: 8,
-      expiryDate: '2027-03-15',
-      manufacturingDate: '2024-03-05',
-      supplier: 'OfficePro Furniture',
-      status: 'Active'
-    }
-  ]);
+  useEffect(() => {
+    Promise.all([
+      fetchBatchSerialRecords(),
+      fetchItems(),
+      fetchSuppliers(),
+    ])
+      .then(([batches, items, supps]) => {
+        setBatchData(batches);
+        setProducts(items || []);
+        setSuppliers(supps || []);
+      })
+      .catch((err) => setError(err.message || 'Failed to load batches'))
+      .finally(() => setLoading(false));
+  }, []);
 
   const filteredBatches = batchData.filter(batch =>
-    batch.productName.toLowerCase().includes(search.toLowerCase()) ||
-    batch.batchNumber.toLowerCase().includes(search.toLowerCase()) ||
-    batch.serialNumber.toLowerCase().includes(search.toLowerCase()) ||
-    batch.supplier.toLowerCase().includes(search.toLowerCase())
+    (batch.productName || '').toLowerCase().includes(search.toLowerCase()) ||
+    (batch.batchNumber || '').toLowerCase().includes(search.toLowerCase()) ||
+    (batch.serialNumber || '').toLowerCase().includes(search.toLowerCase()) ||
+    (batch.supplier || '').toLowerCase().includes(search.toLowerCase())
   );
 
   const getStatusColor = (status) => {
     switch (status) {
-      case "Active":
-        return "hrms-badge-success";
-      case "Expired":
-        return "hrms-badge-error";
-      case "Low Stock":
-        return "hrms-badge-warning";
-      default:
-        return "hrms-badge-neutral";
+      case "Active": return "hrms-badge-success";
+      case "Expired": return "hrms-badge-error";
+      case "Low Stock": return "hrms-badge-warning";
+      default: return "hrms-badge-neutral";
     }
   };
 
@@ -120,18 +98,38 @@ const BatchSerialTracking = () => {
     setDeleteShow(true);
   };
 
-  const handleSaveBatch = (batchData) => {
-    if (openData) {
-      // Create new batch
-      setBatchData(prev => [...prev, batchData]);
-    } else if (editShow) {
-      // Update existing batch
-      setBatchData(prev => prev.map(b => b.id === selectedBatch.id ? batchData : b));
+  const handleSaveBatch = async (payload) => {
+    setError('');
+    try {
+      const data = {
+        ...payload,
+        productId: payload.productId || payload.itemId,
+        supplierId: payload.supplierId || payload.supplier,
+      };
+      if (editShow && selectedBatch?.id) {
+        const updated = await updateBatchSerialRecord(selectedBatch.id, data);
+        setBatchData(prev => prev.map(b => b.id === selectedBatch.id ? enrichBatch(updated) : b));
+      } else {
+        const created = await createBatchSerialRecord(data);
+        setBatchData(prev => [enrichBatch(created), ...prev]);
+      }
+      handleClose();
+    } catch (err) {
+      setError(err.message || 'Failed to save batch');
     }
   };
 
-  const handleDeleteConfirm = (id) => {
-    setBatchData(prev => prev.filter(b => b.id !== id));
+  const handleDeleteConfirm = async (id) => {
+    const batchId = id || selectedBatch?.id;
+    if (!batchId) return;
+    setError('');
+    try {
+      await deleteBatchSerialRecord(batchId);
+      setBatchData(prev => prev.filter(b => b.id !== batchId));
+      handleClose();
+    } catch (err) {
+      setError(err.message || 'Failed to delete batch');
+    }
   };
 
   const handleClose = () => {
@@ -146,10 +144,34 @@ const BatchSerialTracking = () => {
     setPage(newPage - 1);
   };
 
+  const productOptions = products.map(p => ({ id: p.id || p.productId, name: p.productName || p.skuCode || p.id }));
+  const supplierOptions = (suppliers || []).map(s => ({ id: s.id || s.supplierId, name: s.supplierName || s.name || s.companyName || s.id }));
+
+  const enrichBatch = (batch) => {
+    if (!batch) return batch;
+    const product = productOptions.find(p => String(p.id) === String(batch.productId));
+    const supplier = supplierOptions.find(s => String(s.id) === String(batch.supplierId || batch.supplier));
+    return {
+      ...batch,
+      productName: product?.name || batch.productName || '-',
+      supplier: supplier?.name || batch.supplier || '-',
+    };
+  };
+
+  if (loading) {
+    return (
+      <div className="content-area">
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <CircularProgress />
+        </Box>
+      </div>
+    );
+  }
+
   return (
     <div className="content-area">
+      {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
 
-      {/* Search and Add Button */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
         <TextField
           placeholder="Search batches..."
@@ -157,9 +179,7 @@ const BatchSerialTracking = () => {
           onChange={(e) => setSearch(e.target.value)}
           InputProps={{
             startAdornment: (
-              <InputAdornment position="start">
-                <Search />
-              </InputAdornment>
+              <InputAdornment position="start"><Search /></InputAdornment>
             ),
           }}
           sx={{ width: "300px", "& .MuiOutlinedInput-root": { height: "40px" } }}
@@ -174,7 +194,6 @@ const BatchSerialTracking = () => {
         </button>
       </Box>
 
-      {/* Batch Tracking Table */}
       <Box className="hrms-card">
         <Box className="hrms-card-content" sx={{ padding: 0 }}>
           <Table className="hrms-table">
@@ -196,11 +215,11 @@ const BatchSerialTracking = () => {
               {filteredBatches
                 .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                 .map((batch, index) => (
-                  <TableRow key={batch.id}>
+                  <TableRow key={batch.id || batch._id}>
                     <TableCell>{page * rowsPerPage + index + 1}</TableCell>
                     <TableCell>
                       <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                        {batch.productName}
+                        {batch.productName || '-'}
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -208,11 +227,11 @@ const BatchSerialTracking = () => {
                         {batch.batchNumber}
                       </Typography>
                     </TableCell>
-                    <TableCell>{batch.serialNumber}</TableCell>
-                    <TableCell>{batch.quantity}</TableCell>
-                    <TableCell>{batch.manufacturingDate}</TableCell>
-                    <TableCell>{batch.expiryDate}</TableCell>
-                    <TableCell>{batch.supplier}</TableCell>
+                    <TableCell>{batch.serialNumber || '-'}</TableCell>
+                    <TableCell>{batch.quantity ?? batch.totalQuantity ?? 0}</TableCell>
+                    <TableCell>{batch.manufacturingDate || batch.purchaseDate || '-'}</TableCell>
+                    <TableCell>{batch.expiryDate || '-'}</TableCell>
+                    <TableCell>{batch.supplier || '-'}</TableCell>
                     <TableCell>
                       <Box className={`hrms-badge ${getStatusColor(batch.status)}`}>
                         {batch.status}
@@ -220,25 +239,13 @@ const BatchSerialTracking = () => {
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 1 }}>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleViewBatch(batch)}
-                          sx={{ color: '#1976d2' }}
-                        >
+                        <IconButton size="small" onClick={() => handleViewBatch(batch)} sx={{ color: '#1976d2' }}>
                           <VisibilityOutlined />
                         </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleEditBatch(batch)}
-                          sx={{ color: '#ff9800' }}
-                        >
+                        <IconButton size="small" onClick={() => handleEditBatch(batch)} sx={{ color: '#ff9800' }}>
                           <EditOutlined />
                         </IconButton>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDeleteBatch(batch)}
-                          sx={{ color: '#f44336' }}
-                        >
+                        <IconButton size="small" onClick={() => handleDeleteBatch(batch)} sx={{ color: '#f44336' }}>
                           <DeleteOutlined />
                         </IconButton>
                       </Box>
@@ -254,7 +261,7 @@ const BatchSerialTracking = () => {
               Showing {page * rowsPerPage + 1} to {Math.min((page + 1) * rowsPerPage, filteredBatches.length)} of {filteredBatches.length} batches
             </Typography>
             <Pagination
-              count={Math.ceil(filteredBatches.length / rowsPerPage)}
+              count={Math.ceil(filteredBatches.length / rowsPerPage) || 1}
               page={page + 1}
               onChange={handlePageChange}
               color="primary"
@@ -264,7 +271,6 @@ const BatchSerialTracking = () => {
         </Box>
       </Box>
 
-      {/* CommonDialog for all CRUD operations */}
       <CommonDialog
         key={selectedBatch?.id || 'create'}
         open={openData || viewShow || editShow || deleteShow}
@@ -280,22 +286,24 @@ const BatchSerialTracking = () => {
             <CreateBatch
               onClose={handleClose}
               onSave={handleSaveBatch}
+              products={productOptions}
+              suppliers={supplierOptions}
             />
           ) : viewShow ? (
-            <ViewBatch
-              batchData={selectedBatch}
-            />
+            <ViewBatch batchData={selectedBatch} />
           ) : editShow ? (
             <EditBatch
               batchData={selectedBatch}
               onClose={handleClose}
               onSave={handleSaveBatch}
+              products={productOptions}
+              suppliers={supplierOptions}
             />
           ) : deleteShow ? (
             <DeleteBatch
               batchData={selectedBatch}
               onClose={handleClose}
-              onDelete={handleDeleteConfirm}
+              onDelete={(id) => handleDeleteConfirm(id)}
             />
           ) : null
         }

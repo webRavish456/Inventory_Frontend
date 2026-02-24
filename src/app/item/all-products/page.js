@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Box,
   Table,
@@ -16,108 +17,61 @@ import {
   Stack,
 } from "@mui/material";
 import { Search, Add, VisibilityOutlined, EditOutlined, DeleteOutlined } from "@mui/icons-material";
+import { fetchItems, deleteItem } from "../../../lib/itemApi";
 
 const AllProducts = () => {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage] = useState(10);
+  const [productsData, setProductsData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
-  // All Products data
-  const [productsData, setProductsData] = useState([
-    {
-      id: "PROD001",
-      skuCode: "SGS24-128GB",
-      productType: "Electronics",
-      categoryName: "Electronics",
-      subCategoryName: "Smartphones",
-      brandName: "Samsung",
-      unitOfMeasure: "Pieces",
-      description: "Latest Samsung Galaxy S24 with 128GB storage",
-      barCode: "1234567890123",
-      purchasePrice: 42000,
-      sellingPrice: 45000,
-      discountPercent: 0,
-      taxRate: 18,
-      hsnCode: "8517",
-      stock: 25,
-      reorderLevel: 5,
-      warehouseName: "Electronics Warehouse",
-      productImageUrl: "samsung-s24.jpg",
-      status: "Active"
-    },
-    {
-      id: "PROD002",
-      skuCode: "DLI15-512GB",
-      productType: "Electronics",
-      categoryName: "Electronics",
-      subCategoryName: "Laptops",
-      brandName: "Dell",
-      unitOfMeasure: "Pieces",
-      description: "Dell Inspiron 15 with 512GB SSD",
-      barCode: "2345678901234",
-      purchasePrice: 45000,
-      sellingPrice: 48000,
-      discountPercent: 5,
-      taxRate: 18,
-      hsnCode: "8471",
-      stock: 15,
-      reorderLevel: 3,
-      warehouseName: "Electronics Warehouse",
-      productImageUrl: "dell-inspiron.jpg",
-      status: "Active"
-    },
-    {
-      id: "PROD003",
-      skuCode: "OCE-001",
-      productType: "Furniture",
-      categoryName: "Furniture",
-      subCategoryName: "Office Chairs",
-      brandName: "OfficePro",
-      unitOfMeasure: "Pieces",
-      description: "Ergonomic office chair with lumbar support",
-      barCode: "3456789012345",
-      purchasePrice: 10000,
-      sellingPrice: 12000,
-      discountPercent: 10,
-      taxRate: 12,
-      hsnCode: "9401",
-      stock: 8,
-      reorderLevel: 2,
-      warehouseName: "Furniture Warehouse",
-      productImageUrl: "office-chair.jpg",
-      status: "Active"
-    },
-    {
-      id: "PROD004",
-      skuCode: "CM-001",
-      productType: "Kitchenware",
-      categoryName: "Kitchenware",
-      subCategoryName: "Ceramic Items",
-      brandName: "CeramicPro",
-      unitOfMeasure: "Pieces",
-      description: "Premium ceramic coffee mug",
-      barCode: "4567890123456",
-      purchasePrice: 500,
-      sellingPrice: 750,
-      discountPercent: 15,
-      taxRate: 12,
-      hsnCode: "6911",
-      stock: 50,
-      reorderLevel: 10,
-      warehouseName: "Main Warehouse",
-      productImageUrl: "coffee-mug.jpg",
-      status: "Active"
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const list = await fetchItems();
+        if (!cancelled) setProductsData(list);
+      } catch (e) {
+        if (!cancelled) setError(e.message || "Failed to load products");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleDelete = async (product) => {
+    if (!product?.id || !confirm(`Delete product ${product.productName || product.description}?`)) return;
+    setDeletingId(product.id);
+    setError(null);
+    try {
+      await deleteItem(product.id);
+      setProductsData((prev) => prev.filter((p) => p.id !== product.id));
+    } catch (e) {
+      setError(e.message || "Failed to delete product");
+    } finally {
+      setDeletingId(null);
     }
-  ]);
+  };
 
-  const filteredProducts = productsData.filter(product =>
-    product.skuCode.toLowerCase().includes(search.toLowerCase()) ||
-    product.productType.toLowerCase().includes(search.toLowerCase()) ||
-    product.categoryName.toLowerCase().includes(search.toLowerCase()) ||
-    product.brandName.toLowerCase().includes(search.toLowerCase()) ||
-    product.warehouseName.toLowerCase().includes(search.toLowerCase()) ||
-    product.status.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredProducts = productsData.filter(product => {
+    const s = (search || "").toLowerCase();
+    const sku = (product.skuCode || "").toLowerCase();
+    const pt = (product.productType || product.type || "").toLowerCase();
+    const cat = (product.categoryName || "").toLowerCase();
+    const brand = (product.brandName || product.brand || "").toLowerCase();
+    const wh = (product.warehouseName || "").toLowerCase();
+    const st = (product.status || "").toLowerCase();
+    const desc = (product.description || "").toLowerCase();
+    const pn = (product.productName || "").toLowerCase();
+    return sku.includes(s) || pt.includes(s) || cat.includes(s) || brand.includes(s) || wh.includes(s) || st.includes(s) || desc.includes(s) || pn.includes(s);
+  });
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -145,9 +99,21 @@ const AllProducts = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="content-area">
+        <Typography color="text.secondary">Loading products...</Typography>
+      </div>
+    );
+  }
+
   return (
     <div className="content-area">
-      
+      {error && (
+        <Box sx={{ mb: 2, p: 1.5, bgcolor: "error.light", color: "error.contrastText", borderRadius: 1 }}>
+          {error}
+        </Box>
+      )}
       {/* Search and Create Button */}
       <Box sx={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "1rem", marginBottom: "1rem" }}>
         <TextField
@@ -166,7 +132,7 @@ const AllProducts = () => {
         <button
           className="hrms-btn hrms-btn-primary"
           style={{ height: "40px" }}
-          onClick={() => window.location.href = '/item/all-products/create'}
+          onClick={() => router.push('/item/all-products/create')}
         >
           <Add />
           Add Product
@@ -196,14 +162,14 @@ const AllProducts = () => {
                   <TableRow key={product.id}>
                     <TableCell>{page * rowsPerPage + index + 1}</TableCell>
                     <TableCell>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                        {product.description}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{product.categoryName}</TableCell>
-                    <TableCell>{product.brandName}</TableCell>
-                    <TableCell>₹{product.purchasePrice.toLocaleString()}</TableCell>
-                    <TableCell>₹{product.sellingPrice.toLocaleString()}</TableCell>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                          {product.productName || product.description}
+                        </Typography>
+                      </TableCell>
+                    <TableCell>{product.categoryName || product.category?.name}</TableCell>
+                    <TableCell>{product.brandName || product.brand}</TableCell>
+                    <TableCell>₹{Number(product.purchasePrice || 0).toLocaleString()}</TableCell>
+                    <TableCell>₹{Number(product.sellingPrice || 0).toLocaleString()}</TableCell>
                     <TableCell>
                       <Box className={`hrms-badge ${getStatusColor(product.status)}`}>
                         {product.status}
@@ -214,20 +180,22 @@ const AllProducts = () => {
                         <IconButton 
                           size="small"
                           sx={{ color: "#1976D2", fontSize: "16px" }}
-                          onClick={() => window.location.href = `/item/all-products/view/${product.id}`}
+                          onClick={() => router.push(`/item/all-products/view/${product.id}`)}
                         >
                           <VisibilityOutlined />
                         </IconButton>
                         <IconButton 
                           size="small"
                           sx={{ color: "#000", fontSize: "16px" }}
-                          onClick={() => window.location.href = `/item/all-products/edit/${product.id}`}
+                          onClick={() => router.push(`/item/all-products/edit/${product.id}`)}
                         >
                           <EditOutlined />
                         </IconButton>
                         <IconButton 
                           size="small"
                           sx={{ color: "#d32f2f", fontSize: "16px" }}
+                          onClick={() => handleDelete(product)}
+                          disabled={deletingId === product.id}
                         >
                           <DeleteOutlined />
                         </IconButton>

@@ -13,7 +13,7 @@ import {
   Typography,
 } from "@mui/material";
 
-const CreateBinRack = ({ onClose, onSave }) => {
+const CreateBinRack = ({ warehouses = [], onClose, onSave }) => {
   const [formData, setFormData] = useState({
     warehouseName: '',
     zone: '',
@@ -23,7 +23,8 @@ const CreateBinRack = ({ onClose, onSave }) => {
     capacity: '',
     currentStock: '',
     occupancy: '',
-    productCategory: ''
+    productCategory: '',
+    level: '1'
   });
 
   const [errors, setErrors] = useState({});
@@ -59,12 +60,12 @@ const CreateBinRack = ({ onClose, onSave }) => {
 
   const handleSave = () => {
     if (validateForm()) {
+      const wh = warehouses.find(w => (w.warehouseName || w.name) === formData.warehouseName);
       const newBinRack = {
         ...formData,
-        id: `BR${String(Date.now()).slice(-3)}`,
-        status: 'Active',
-        currentStock: formData.occupancy, // Map occupancy to currentStock for compatibility
-        utilization: Math.round((formData.occupancy / formData.capacity) * 100)
+        warehouseId: wh?.id || wh?.warehouseId,
+        currentStock: formData.occupancy ?? formData.currentStock,
+        utilization: formData.capacity ? Math.round(((formData.occupancy ?? formData.currentStock) / formData.capacity) * 100) : 0
       };
       onSave(newBinRack);
       onClose();
@@ -84,10 +85,14 @@ const CreateBinRack = ({ onClose, onSave }) => {
               onChange={(e) => handleInputChange('warehouseName', e.target.value)}
               label="Warehouse Name"
             >
-              <MenuItem value="Main Warehouse">Main Warehouse</MenuItem>
-              <MenuItem value="Electronics Warehouse">Electronics Warehouse</MenuItem>
-              <MenuItem value="Furniture Warehouse">Furniture Warehouse</MenuItem>
-              <MenuItem value="Cold Storage Warehouse">Cold Storage Warehouse</MenuItem>
+              <MenuItem value="">
+                <em>Select warehouse</em>
+              </MenuItem>
+              {(warehouses || []).map((w) => (
+                <MenuItem key={w.id || w.warehouseId} value={w.warehouseName || w.name}>
+                  {w.warehouseName || w.name}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
         </Grid>
