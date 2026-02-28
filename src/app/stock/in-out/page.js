@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Table,
@@ -16,6 +16,8 @@ import {
   Stack,
   Tabs,
   Tab,
+  CircularProgress,
+  Alert,
 } from "@mui/material";
 import { Search, Add, VisibilityOutlined, EditOutlined, DeleteOutlined } from "@mui/icons-material";
 import CommonDialog from '../../../components/CommonDialog';
@@ -27,6 +29,7 @@ import CreateStockOut from '../../../components/Stock Management/StockInOut/Crea
 import EditStockOut from '../../../components/Stock Management/StockInOut/EditStockOut';
 import ViewStockOut from '../../../components/Stock Management/StockInOut/ViewStockOut';
 import DeleteStockOut from '../../../components/Stock Management/StockInOut/DeleteStockOut';
+import { getAllStockInOut, updateStockInOut, deleteStockInOut } from '../../../lib/stockApi';
 
 const StockInOut = () => {
   const [search, setSearch] = useState("");
@@ -38,66 +41,100 @@ const StockInOut = () => {
   const [editShow, setEditShow] = useState(false);
   const [deleteShow, setDeleteShow] = useState(false);
   const [selectedStock, setSelectedStock] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Stock In data
-  const [stockInData, setStockInData] = useState([
-    {
-      id: "SI001",
-      stockInId: "SI001",
-      productName: "Samsung Galaxy S24",
-      quantityIn: 5,
-      totalCost: 450000,
-      supplierName: "Tech Solutions Ltd",
-      dateOfStockIn: "2024-09-20",
-      paymentStatus: "Paid"
-    },
-    {
-      id: "SI002",
-      stockInId: "SI002",
-      productName: "Dell Laptop Inspiron 15",
-      quantityIn: 3,
-      totalCost: 240000,
-      supplierName: "Computer World",
-      dateOfStockIn: "2024-09-19",
-      paymentStatus: "Pending"
+  // Stock In/Out data from API
+  const [stockInData, setStockInData] = useState([]);
+  const [stockOutData, setStockOutData] = useState([]);
+
+  // Fetch data on mount
+  useEffect(() => {
+    fetchStockData();
+  }, []);
+
+  const fetchStockData = async () => {
+    try {
+      setLoading(true);
+      const response = await getAllStockInOut();
+      
+      if (response?.data) {
+        // Separate Stock In and Stock Out
+        const inData = response.data.filter(item => item.transactionType === 'Stock In');
+        const outData = response.data.filter(item => item.transactionType === 'Stock Out');
+        
+        setStockInData(inData || []);
+        setStockOutData(outData || []);
+        setError("");
+      } else {
+        setError("Failed to fetch stock data");
+        setStockInData([]);
+        setStockOutData([]);
+      }
+    } catch (err) {
+      setError("Error loading stock data: " + (err.message || "Unknown error"));
+      console.error(err);
+      setStockInData([]);
+      setStockOutData([]);
+    } finally {
+      setLoading(false);
     }
-  ]);
+  };
 
-  // Stock Out data
-  const [stockOutData, setStockOutData] = useState([
-    {
-      id: "SO001",
-      stockOutId: "SO001",
-      productName: "Samsung Galaxy S24",
-      quantityOut: 2,
-      totalSale: 50000,
-      customerName: "John Doe",
-      dateOfStockOut: "2024-09-20",
-      transactionType: "Sale",
-      paymentStatus: "Paid"
-    },
-    {
-      id: "SO002",
-      stockOutId: "SO002",
-      productName: "Dell Laptop Inspiron 15",
-      quantityOut: 1,
-      totalSale: 55000,
-      customerName: "Jane Smith",
-      dateOfStockOut: "2024-09-19",
-      transactionType: "Return to Supplier",
-      paymentStatus: "Pending"
+  // Helper function to get product name from itemId
+  const getProductName = (item) => {
+    if (typeof item.itemId === 'object' && item.itemId?.productName) {
+      return item.itemId.productName;
     }
-  ]);
+    return item.productName || 'N/A';
+  };
 
-  const filteredStockIn = stockInData.filter(stock =>
-    stock.productName.toLowerCase().includes(search.toLowerCase()) ||
-    stock.supplierName.toLowerCase().includes(search.toLowerCase())
-  );
+  // Helper function to get supplier name from supplierId
+  const getSupplierName = (item) => {
+    if (typeof item.supplierId === 'object' && item.supplierId?.name) {
+      return item.supplierId.name;
+    }
+    return item.supplierName || 'N/A';
+  };
 
-  const filteredStockOut = stockOutData.filter(stock =>
-    stock.productName.toLowerCase().includes(search.toLowerCase()) ||
-    stock.customerName.toLowerCase().includes(search.toLowerCase())
-  );
+  // Helper function to format data for display
+  const formatStockInData = (rawData) => {
+    return rawData.map(item => ({
+      ...item,
+      id: item._id || item.id,
+      stockInId: item._id?.slice(-6) || 'SI-AUTO',
+      productName: getProductName(item),
+      supplierName: getSupplierName(item),
+      quantityIn: item.quantity || 0,
+      totalCost: item.totalCost || 0,
+      dateOfStockIn: item.entryDate ? new Date(item.entryDate).toLocaleDateString() : 'N/A',
+    }));
+  };
+
+  const formattedStockIn = formatStockInData(stockInData);
+
+  // Filter with null checks
+  const filteredStockIn = formattedStockIn.filter(stock => {
+    if (!stock || !search) return true;
+    const productName = stock.productName || '';
+    const supplierName = stock.supplierName || '';
+    const searchLower = search.toLowerCase();
+    return (
+      productName.toLowerCase().includes(searchLower) ||
+      supplierName.toLowerCase().includes(searchLower)
+    );
+  });
+
+  const filteredStockOut = stockOutData.filter(stock => {
+    if (!stock || !search) return true;
+    const productName = stock.productName || '';
+    const customerName = stock.customerName || '';
+    const searchLower = search.toLowerCase();
+    return (
+      productName.toLowerCase().includes(searchLower) ||
+      customerName.toLowerCase().includes(searchLower)
+    );
+  });
 
   const getPaymentStatusColor = (status) => {
     switch (status) {
@@ -148,50 +185,40 @@ const StockInOut = () => {
     setDeleteShow(true);
   };
 
-  const handleSaveStock = (formData) => {
-    if (editShow) {
-      if (tabValue === 0) {
-        setStockInData(stockInData.map(stock => 
-          stock.id === selectedStock.id 
-            ? { ...stock, ...formData, lastUpdated: new Date().toLocaleDateString() }
-            : stock
-        ));
+  const handleSaveStock = async (formData) => {
+    try {
+      if (editShow) {
+        // Update existing stock
+        const response = await updateStockInOut(selectedStock.id || selectedStock._id, formData);
+        if (response?.success) {
+          // Refresh data after successful update
+          fetchStockData();
+        } else {
+          setError(response?.message || "Failed to update stock");
+        }
       } else {
-        setStockOutData(stockOutData.map(stock => 
-          stock.id === selectedStock.id 
-            ? { ...stock, ...formData, lastUpdated: new Date().toLocaleDateString() }
-            : stock
-        ));
+        // Create is handled by CreateStockIn component which calls API directly
+        // This branch is for completeness but creation is handled elsewhere
       }
-    } else {
-      if (tabValue === 0) {
-        const newStock = {
-          id: Date.now().toString(),
-          stockInId: `SI${String(stockInData.length + 1).padStart(3, '0')}`,
-          ...formData,
-          createdDate: new Date().toLocaleDateString(),
-          lastUpdated: new Date().toLocaleDateString()
-        };
-        setStockInData([...stockInData, newStock]);
-      } else {
-        const newStock = {
-          id: Date.now().toString(),
-          stockOutId: `SO${String(stockOutData.length + 1).padStart(3, '0')}`,
-          ...formData,
-          createdDate: new Date().toLocaleDateString(),
-          lastUpdated: new Date().toLocaleDateString()
-        };
-        setStockOutData([...stockOutData, newStock]);
-      }
+    } catch (err) {
+      setError("Error saving stock: " + (err.message || "Unknown error"));
+      console.error(err);
     }
     handleClose();
   };
 
-  const handleDeleteConfirm = () => {
-    if (tabValue === 0) {
-      setStockInData(stockInData.filter(s => s.id !== selectedStock.id));
-    } else {
-      setStockOutData(stockOutData.filter(s => s.id !== selectedStock.id));
+  const handleDeleteConfirm = async () => {
+    try {
+      const response = await deleteStockInOut(selectedStock.id || selectedStock._id);
+      if (response?.success) {
+        // Refresh data after successful delete
+        fetchStockData();
+      } else {
+        setError(response?.message || "Failed to delete stock");
+      }
+    } catch (err) {
+      setError("Error deleting stock: " + (err.message || "Unknown error"));
+      console.error(err);
     }
     handleClose();
   };
@@ -213,8 +240,23 @@ const StockInOut = () => {
   const currentData = tabValue === 0 ? filteredStockIn : filteredStockOut;
   const currentPageData = currentData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
+  if (loading) {
+    return (
+      <div className="content-area">
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+          <CircularProgress />
+        </Box>
+      </div>
+    );
+  }
+
   return (
     <div className="content-area">
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
       {/* Tabs, Search and Create Button - Single Line */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         {/* Tabs - Left Side */}

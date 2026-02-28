@@ -1,40 +1,54 @@
 "use client";
-import { Button, Grid, TextField, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
+import { Button, Grid, TextField, FormControl, InputLabel, Select, MenuItem, CircularProgress, Alert } from "@mui/material";
 import { useState, useEffect } from "react";
+import { fetchItems } from "@/lib/itemApi";
+import { fetchWarehouses } from "@/lib/warehouseApi";
+import { updateRealTimeStock } from "@/lib/stockApi";
 
 const EditRealTimeStock = ({ stockData, onClose, onSave }) => {
   const [formData, setFormData] = useState({
-    productName: "",
-    warehouseName: "",
+    itemId: "",
+    warehouseId: "",
     currentStock: "",
-    reservedStock: "",
     availableStock: "",
-    lastMovement: "",
+    reservedStock: "",
+    movement: "",
     movementQuantity: ""
   });
+  const [items, setItems] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const movements = [
-    "Stock In",
-    "Stock Out",
-    "Stock Transfer"
-  ];
+  const movements = ["Stock In", "Stock Out", "Stock Transfer"];
 
-  const warehouses = [
-    "Electronics Warehouse",
-    "Furniture Warehouse",
-    "Clothing Warehouse",
-    "Food Warehouse"
-  ];
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const itemsRes = await fetchItems();
+        const warehousesRes = await fetchWarehouses();
+        
+        setItems(itemsRes || []);
+        setWarehouses(warehousesRes || []);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   useEffect(() => {
     if (stockData) {
       setFormData({
-        productName: stockData.productName || "",
-        warehouseName: stockData.warehouseName || "",
+        itemId: stockData.itemId || "",
+        warehouseId: stockData.warehouseId || "",
         currentStock: stockData.currentStock || "",
-        reservedStock: stockData.reservedStock || "",
         availableStock: stockData.availableStock || "",
-        lastMovement: stockData.lastMovement || "",
+        reservedStock: stockData.reservedStock || "",
+        movement: stockData.movement || "",
         movementQuantity: stockData.movementQuantity || ""
       });
     }
@@ -42,45 +56,94 @@ const EditRealTimeStock = ({ stockData, onClose, onSave }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSave = () => {
-    if (onSave) {
-      onSave(formData);
+  const handleSave = async () => {
+    if (
+      !formData.itemId ||
+      !formData.warehouseId ||
+      !formData.currentStock ||
+      !formData.availableStock ||
+      !formData.movement ||
+      !formData.movementQuantity
+    ) {
+      setError("Please fill in all required fields.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await updateRealTimeStock(stockData._id, formData);
+      if (response?.success) {
+        setError("");
+        if (onSave) {
+          onSave(response.data);
+        }
+        onClose();
+      } else {
+        setError(response?.message || "Failed to update stock");
+      }
+    } catch (err) {
+      setError("Error updating: " + (err.message || "Unknown error"));
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
+  if (loading) {
+    return (
+      <Grid container spacing={2} justifyContent="center" alignItems="center" sx={{ minHeight: "200px" }}>
+        <CircularProgress />
+      </Grid>
+    );
+  }
+
   return (
     <Grid container spacing={2}>
-      <Grid size={{ xs: 12, md: 6 }}>
-        <TextField
-          fullWidth
-          label="Product Name"
-          name="productName"
-          value={formData.productName}
-          onChange={handleChange}
-          required
-          placeholder="Enter product name"
-        />
-      </Grid>
+      {error && (
+        <Grid size={{ xs: 12 }}>
+          <Alert severity="error">{error}</Alert>
+        </Grid>
+      )}
+
       <Grid size={{ xs: 12, md: 6 }}>
         <FormControl fullWidth required>
-          <InputLabel>Warehouse</InputLabel>
+          <InputLabel>Item/Product</InputLabel>
           <Select
-            name="warehouseName"
-            value={formData.warehouseName}
+            name="itemId"
+            value={formData.itemId}
             onChange={handleChange}
-            label="Warehouse"
+            label="Item/Product"
           >
-            {warehouses.map((warehouse) => (
-              <MenuItem key={warehouse} value={warehouse}>
-                {warehouse}
+            {items.map((item) => (
+              <MenuItem key={item.id} value={item.id}>
+                {item.productName} (SKU: {item.skuCode})
               </MenuItem>
             ))}
           </Select>
         </FormControl>
       </Grid>
+
+      <Grid size={{ xs: 12, md: 6 }}>
+        <FormControl fullWidth required>
+          <InputLabel>Warehouse</InputLabel>
+          <Select
+            name="warehouseId"
+            value={formData.warehouseId}
+            onChange={handleChange}
+            label="Warehouse"
+          >
+            {warehouses.map((warehouse) => (
+              <MenuItem key={warehouse.id} value={warehouse.id}>
+                {warehouse.warehouseName}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Grid>
+
       <Grid size={{ xs: 12, md: 6 }}>
         <TextField
           fullWidth
@@ -93,18 +156,7 @@ const EditRealTimeStock = ({ stockData, onClose, onSave }) => {
           placeholder="Enter current stock"
         />
       </Grid>
-      <Grid size={{ xs: 12, md: 6 }}>
-        <TextField
-          fullWidth
-          label="Reserved Stock"
-          name="reservedStock"
-          type="number"
-          value={formData.reservedStock}
-          onChange={handleChange}
-          required
-          placeholder="Enter reserved stock"
-        />
-      </Grid>
+
       <Grid size={{ xs: 12, md: 6 }}>
         <TextField
           fullWidth
@@ -117,14 +169,27 @@ const EditRealTimeStock = ({ stockData, onClose, onSave }) => {
           placeholder="Enter available stock"
         />
       </Grid>
+
+      <Grid size={{ xs: 12, md: 6 }}>
+        <TextField
+          fullWidth
+          label="Reserved Stock"
+          name="reservedStock"
+          type="number"
+          value={formData.reservedStock}
+          onChange={handleChange}
+          placeholder="Enter reserved stock"
+        />
+      </Grid>
+
       <Grid size={{ xs: 12, md: 6 }}>
         <FormControl fullWidth required>
-          <InputLabel>Movement</InputLabel>
+          <InputLabel>Movement Type</InputLabel>
           <Select
-            name="lastMovement"
-            value={formData.lastMovement}
+            name="movement"
+            value={formData.movement}
             onChange={handleChange}
-            label="Movement"
+            label="Movement Type"
           >
             {movements.map((movement) => (
               <MenuItem key={movement} value={movement}>
@@ -134,7 +199,8 @@ const EditRealTimeStock = ({ stockData, onClose, onSave }) => {
           </Select>
         </FormControl>
       </Grid>
-      <Grid size={{ xs: 12, md: 12 }}>
+
+      <Grid size={{ xs: 12 }}>
         <TextField
           fullWidth
           label="Movement Quantity"
@@ -146,22 +212,22 @@ const EditRealTimeStock = ({ stockData, onClose, onSave }) => {
           placeholder="Enter movement quantity"
         />
       </Grid>
+
       <Grid size={{ xs: 12 }} display="flex" justifyContent="flex-end" gap={2}>
-        <Button 
-          onClick={onClose} 
-          variant="outlined" 
-          sx={{ transform: 'none', textTransform: 'none' }}
+        <Button
+          onClick={onClose}
+          variant="outlined"
+          sx={{ textTransform: 'none' }}
         >
           Cancel
         </Button>
-        <Button 
-          onClick={handleSave} 
-          variant="contained" 
-          sx={{ 
+        <Button
+          onClick={handleSave}
+          variant="contained"
+          sx={{
             backgroundColor: '#1976D2',
             '&:hover': { backgroundColor: '#1565C0' },
-            transform: 'none', 
-            textTransform: 'none' 
+            textTransform: 'none'
           }}
         >
           Update

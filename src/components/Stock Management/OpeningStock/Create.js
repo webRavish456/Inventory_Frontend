@@ -1,66 +1,116 @@
 "use client";
-import { Button, Grid, TextField, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
-import { useState } from "react";
+import { Button, Grid, TextField, FormControl, InputLabel, Select, MenuItem, CircularProgress, Alert } from "@mui/material";
+import { useState, useEffect } from "react";
+import { fetchItems } from "@/lib/itemApi";
+import { fetchWarehouses } from "@/lib/warehouseApi";
+import { fetchSuppliers } from "@/lib/supplierApi";
+import { createOpeningStock } from "@/lib/stockApi";
 
 const CreateOpeningStock = ({ onClose, onSave }) => {
   const [formData, setFormData] = useState({
-    productName: "",
-    warehouseName: "",
-    supplierName: "",
-    openingQuantity: "",
+    itemId: "",
+    warehouseId: "",
+    supplierId: "",
+    quantity: "",
     unitPrice: "",
-    openingDate: ""
+    openingDate: new Date().toISOString().split('T')[0]
   });
+  const [items, setItems] = useState([]);
+  const [warehouses, setWarehouses] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const warehouses = [
-    "Electronics Warehouse",
-    "Furniture Warehouse",
-    "Clothing Warehouse",
-    "Food Warehouse"
-  ];
 
-  const products = [
-    "Samsung Galaxy S24",
-    "Dell Laptop Inspiron 15",
-    "Office Chair Ergonomic",
-    "iPhone 15 Pro",
-    "MacBook Air M2"
-  ];
-
-  const suppliers = [
-    "Tech Solutions Ltd",
-    "Computer World",
-    "Furniture Plus",
-    "Office Supplies Co"
-  ];
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const itemsRes = await fetchItems();
+        const warehousesRes = await fetchWarehouses();
+        const suppliersRes = await fetchSuppliers();
+        
+        setItems(itemsRes || []);
+        setWarehouses(warehousesRes || []);
+        setSuppliers(suppliersRes || []);
+        setError("");
+      } catch (err) {
+        setError("Failed to load data: " + (err.message || "Unknown error"));
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSave = () => {
-    if (onSave) {
-      // Calculate total value
-      const totalValue = formData.openingQuantity * formData.unitPrice;
-      onSave({ ...formData, totalValue });
+  const handleSave = async () => {
+    if (!formData.itemId || !formData.warehouseId || !formData.quantity || !formData.unitPrice) {
+      setError("Please fill in all required fields");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const payload = {
+        itemId: formData.itemId,
+        warehouseId: formData.warehouseId,
+        supplierId: formData.supplierId || null,
+        quantity: parseInt(formData.quantity),
+        unitPrice: parseFloat(formData.unitPrice),
+        openingDate: formData.openingDate
+      };
+
+      const response = await createOpeningStock(payload);
+      if (response?.success) {
+        setError("");
+        if (onSave) {
+          onSave(response.data);
+        }
+        onClose();
+      } else {
+        setError(response?.message || "Failed to save opening stock");
+      }
+    } catch (err) {
+      setError("Error saving: " + (err.message || "Unknown error"));
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
+  if (loading) {
+    return (
+      <Grid container spacing={2} justifyContent="center" alignItems="center" sx={{ minHeight: "200px" }}>
+        <CircularProgress />
+      </Grid>
+    );
+  }
+
   return (
     <Grid container spacing={2}>
+      {error && (
+        <Grid size={{ xs: 12 }}>
+          <Alert severity="error">{error}</Alert>
+        </Grid>
+      )}
       <Grid size={{ xs: 12, md: 6 }}>
         <FormControl fullWidth required>
-          <InputLabel>Product Name</InputLabel>
+          <InputLabel>Item/Product</InputLabel>
           <Select
-            name="productName"
-            value={formData.productName}
+            name="itemId"
+            value={formData.itemId}
             onChange={handleChange}
-            label="Product Name"
+            label="Item/Product"
           >
-            {products.map((product) => (
-              <MenuItem key={product} value={product}>
-                {product}
+            {items.map((item) => (
+              <MenuItem key={item.id} value={item.id}>
+                {item.productName} (SKU: {item.skuCode})
               </MenuItem>
             ))}
           </Select>
@@ -70,31 +120,34 @@ const CreateOpeningStock = ({ onClose, onSave }) => {
         <FormControl fullWidth required>
           <InputLabel>Warehouse</InputLabel>
           <Select
-            name="warehouseName"
-            value={formData.warehouseName}
+            name="warehouseId"
+            value={formData.warehouseId}
             onChange={handleChange}
             label="Warehouse"
           >
             {warehouses.map((warehouse) => (
-              <MenuItem key={warehouse} value={warehouse}>
-                {warehouse}
+              <MenuItem key={warehouse.id} value={warehouse.id}>
+                {warehouse.warehouseName}
               </MenuItem>
             ))}
           </Select>
         </FormControl>
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>
-        <FormControl fullWidth required>
-          <InputLabel>Supplier Name</InputLabel>
+        <FormControl fullWidth>
+          <InputLabel>Supplier</InputLabel>
           <Select
-            name="supplierName"
-            value={formData.supplierName}
+            name="supplierId"
+            value={formData.supplierId}
             onChange={handleChange}
-            label="Supplier Name"
+            label="Supplier"
           >
+            <MenuItem value="">
+              <em>None</em>
+            </MenuItem>
             {suppliers.map((supplier) => (
-              <MenuItem key={supplier} value={supplier}>
-                {supplier}
+              <MenuItem key={supplier.id} value={supplier.id}>
+                {supplier.supplierName}
               </MenuItem>
             ))}
           </Select>
@@ -104,9 +157,9 @@ const CreateOpeningStock = ({ onClose, onSave }) => {
         <TextField
           fullWidth
           label="Opening Quantity"
-          name="openingQuantity"
+          name="quantity"
           type="number"
-          value={formData.openingQuantity}
+          value={formData.quantity}
           onChange={handleChange}
           required
           placeholder="Enter opening quantity"
@@ -132,7 +185,6 @@ const CreateOpeningStock = ({ onClose, onSave }) => {
           type="date"
           value={formData.openingDate}
           onChange={handleChange}
-          required
           InputLabelProps={{ shrink: true }}
         />
       </Grid>

@@ -3,7 +3,6 @@ import { Grid, Typography, Chip } from "@mui/material";
 const ViewRealTimeStock = ({ stockData }) => {
   if (!stockData) return null;
 
-
   const getMovementColor = (movement) => {
     switch (movement) {
       case "Stock In":
@@ -21,18 +20,18 @@ const ViewRealTimeStock = ({ stockData }) => {
     <Grid container spacing={2}>
       <Grid size={{ xs: 12, md: 6 }}>
         <Typography variant="body2" sx={{ fontWeight: 600, color: '#666', mb: 0.5 }}>
-          Stock ID
+          Item ID
         </Typography>
         <Typography variant="body1" sx={{ fontWeight: 500, color: '#1976d2' }}>
-          {stockData.stockId}
+          {stockData._id}
         </Typography>
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>
         <Typography variant="body2" sx={{ fontWeight: 600, color: '#666', mb: 0.5 }}>
-          Product Name
+          Item Name
         </Typography>
         <Typography variant="body1" sx={{ fontWeight: 500 }}>
-          {stockData.productName}
+          {stockData.itemId?.name || "N/A"}
         </Typography>
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>
@@ -40,7 +39,7 @@ const ViewRealTimeStock = ({ stockData }) => {
           SKU Code
         </Typography>
         <Typography variant="body1" sx={{ fontWeight: 500 }}>
-          {stockData.skuCode}
+          {stockData.itemId?.sku || "N/A"}
         </Typography>
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>
@@ -48,7 +47,7 @@ const ViewRealTimeStock = ({ stockData }) => {
           Warehouse
         </Typography>
         <Typography variant="body1" sx={{ fontWeight: 500 }}>
-          {stockData.warehouseName}
+          {stockData.warehouseId?.name || "N/A"}
         </Typography>
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>
@@ -64,7 +63,7 @@ const ViewRealTimeStock = ({ stockData }) => {
           Reserved Stock
         </Typography>
         <Typography variant="body1" sx={{ fontWeight: 500 }}>
-          {stockData.reservedStock}
+          {stockData.reservedStock || 0}
         </Typography>
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>
@@ -80,8 +79,8 @@ const ViewRealTimeStock = ({ stockData }) => {
           Last Movement
         </Typography>
         <Chip 
-          label={stockData.lastMovement} 
-          color={getMovementColor(stockData.lastMovement)}
+          label={stockData.movement} 
+          color={getMovementColor(stockData.movement)}
           size="small"
           sx={{ fontWeight: 500 }}
         />
@@ -91,15 +90,15 @@ const ViewRealTimeStock = ({ stockData }) => {
           Movement Quantity
         </Typography>
         <Typography variant="body1" sx={{ fontWeight: 500 }}>
-          {stockData.movementQuantity}
+          {stockData.movementQuantity || 0}
         </Typography>
       </Grid>
       <Grid size={{ xs: 12, md: 6 }}>
         <Typography variant="body2" sx={{ fontWeight: 600, color: '#666', mb: 0.5 }}>
-          Movement Date
+          Last Updated
         </Typography>
         <Typography variant="body1" sx={{ fontWeight: 500 }}>
-          {stockData.movementDate}
+          {new Date(stockData.updatedAt).toLocaleString()}
         </Typography>
       </Grid>
     </Grid>
