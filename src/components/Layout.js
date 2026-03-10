@@ -26,7 +26,7 @@ export default function Layout({ children }) {
 
   return (
     <div className="app-container">
-      <aside className="sidebar">
+      <aside >
         <Sidebar />
       </aside>
       <div className="main-content">

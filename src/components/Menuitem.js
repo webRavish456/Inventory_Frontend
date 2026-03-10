@@ -30,7 +30,7 @@ const Menuitems = [
   },
   {
     icon: WarehouseOutlined,
-    label: "Warehouse Management",
+    label: "Warehouse Manage",
     href: "/warehouse/setup",
     item: [
       { label: "Multi-Warehouse Setup", href: "/warehouse/setup" },
@@ -50,7 +50,7 @@ const Menuitems = [
   },
   {
     icon: Inventory2Outlined,
-    label: "Item Management",
+    label: "Item Manage",
     href: "/item/all-products",
     item: [
       { label: "All Products", href: "/item/all-products" },
@@ -67,7 +67,7 @@ const Menuitems = [
   },
   {
     icon: InventoryOutlined,
-    label: "Stock Management",
+    label: "Stock Manage",
     href: "/stock/in-out",
     item: [
       { label: "Stock In/Out", href: "/stock/in-out" },
@@ -78,7 +78,7 @@ const Menuitems = [
   },
   {
     icon: ShoppingCartOutlined,
-    label: "Purchase Management",
+    label: "Purchase Manage",
     href: "/purchase/purchase-orders",
     item: [
       { label: "Purchase Orders", href: "/purchase/purchase-orders" },
@@ -90,7 +90,7 @@ const Menuitems = [
   },
   {
     icon: PointOfSaleOutlined,
-    label: "Sales & Order Management",
+    label: "Sales & Order Manage",
     href: "/sales/orders",
     item: [
       { label: "Sales Orders", href: "/sales/orders" },
@@ -120,7 +120,7 @@ const Menuitems = [
   },
   {
     icon: ReceiptOutlined,
-    label: "Invoice Management",
+    label: "Invoice Manage",
     href: "/invoices",
   },
   {
